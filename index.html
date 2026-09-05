@@ -1,10 +1,34 @@
 <style>
   *{box-sizing:border-box}
   :root{
+    color-scheme: light;
     --paper:#F4F6F7; --surface:#FFFFFF; --ink:#111418; --muted:#6C727C;
     --line:#E1E5EA; --blue:#0F5FD1; --blue-soft:#E9F0FC;
     --red:#C22F35; --amber:#D9911C; --green:#1B7A4B;
+    --hover:#F8F9FA; --track:#EEF1F4; --ok-bg:#F4FAF6; --ok-line:#D3EADD;
+    --pr-bg:#FBECEC; --chip-bg:#F1F3F5; --nav-bg:rgba(255,255,255,.97);
+    --blue-line:#C6D9F7; --bar-bg:#111418; --bar-fg:#FFFFFF;
     --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-tema="claro"]){
+    color-scheme: dark;
+    --paper:#101318; --surface:#181C22; --ink:#E9ECF0; --muted:#98A1AC;
+    --line:#2B313A; --blue:#7AAEFF; --blue-soft:#1C2A3D; --blue-line:#31486B;
+    --red:#F2777E; --amber:#E4A63C; --green:#4FC98D;
+    --hover:#20252D; --track:#252B34; --ok-bg:#16241D; --ok-line:#2A4437;
+    --pr-bg:#33191C; --chip-bg:#232932; --nav-bg:rgba(24,28,34,.97);
+    --bar-bg:#2A313B; --bar-fg:#F2F5F8;
+    }
+  }
+  :root[data-tema="escuro"]{
+    color-scheme: dark;
+    --paper:#101318; --surface:#181C22; --ink:#E9ECF0; --muted:#98A1AC;
+    --line:#2B313A; --blue:#7AAEFF; --blue-soft:#1C2A3D; --blue-line:#31486B;
+    --red:#F2777E; --amber:#E4A63C; --green:#4FC98D;
+    --hover:#20252D; --track:#252B34; --ok-bg:#16241D; --ok-line:#2A4437;
+    --pr-bg:#33191C; --chip-bg:#232932; --nav-bg:rgba(24,28,34,.97);
+    --bar-bg:#2A313B; --bar-fg:#F2F5F8;
   }
   html,body{margin:0;padding:0}
   body{background:var(--paper);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.45}
@@ -28,7 +52,7 @@
   .ellip{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .btn{font:inherit;font-weight:550;border:1px solid var(--line);background:var(--surface);color:var(--ink);
        border-radius:10px;padding:10px 14px;cursor:pointer}
-  .btn:hover{background:#F8F9FA}
+  .btn:hover{background:var(--hover)}
   .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
   .btn.primary:hover{background:#0C4FB0}
   .btn.ghost{border-color:transparent;background:transparent;color:var(--blue);padding:8px 6px}
@@ -37,17 +61,17 @@
   .btn.sm{padding:6px 10px;font-size:13px;border-radius:8px}
   .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);
         border-radius:999px;padding:5px 11px;font-size:13px;color:var(--muted);cursor:pointer;font:inherit;font-size:13px}
-  .chip.on{background:var(--blue-soft);border-color:#C6D9F7;color:var(--blue);font-weight:550}
+  .chip.on{background:var(--blue-soft);border-color:var(--blue-line);color:var(--blue);font-weight:550}
   .tag{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11.5px;font-weight:600;letter-spacing:0}
-  .tag.pr{background:#FBECEC;color:var(--red)}
-  .tag.mus{background:#F1F3F5;color:var(--muted)}
+  .tag.pr{background:var(--pr-bg);color:var(--red)}
+  .tag.mus{background:var(--chip-bg);color:var(--muted)}
   input,select,textarea{font:inherit;color:var(--ink)}
-  .field{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:#fff}
+  .field{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:var(--surface);color:var(--ink)}
   .field:focus{outline:2px solid var(--blue);outline-offset:-1px;border-color:transparent}
   .num{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 6px;text-align:center;
-       font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;background:#fff}
+       font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;background:var(--surface);color:var(--ink)}
   .num:focus{outline:2px solid var(--blue);outline-offset:-1px;border-color:transparent}
-  .num.sug{color:#9AA0A8;font-weight:500}
+  .num.sug{color:var(--muted);font-weight:500}
   /* exercício */
   .ex{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line);border-radius:12px;padding:12px 14px}
   .ex + .ex{margin-top:10px}
@@ -57,19 +81,20 @@
   .setrow.head{color:var(--muted);font-size:12px;padding-bottom:2px}
   .setrow.head span{text-align:center}
   .setno{color:var(--muted);font-size:14px;font-variant-numeric:tabular-nums;text-align:center}
-  .chk{width:42px;height:38px;border:1px solid var(--line);border-radius:9px;background:#fff;cursor:pointer;
-       color:#B9BEC5;font-size:16px;display:flex;align-items:center;justify-content:center}
-  .chk.on{background:var(--green);border-color:var(--green);color:#fff}
-  .ex.done .num, .setrow.ok .num{background:#F4FAF6;border-color:#D3EADD}
+  .chk{width:42px;height:38px;border:1px solid var(--line);border-radius:9px;background:var(--surface);cursor:pointer;
+       color:var(--muted);font-size:16px;display:flex;align-items:center;justify-content:center}
+  .chk.on{background:var(--green);border-color:var(--green);color:var(--surface)}
+  .ex.done .num, .setrow.ok .num{background:var(--ok-bg);border-color:var(--ok-line)}
   /* nav */
-  nav{position:fixed;left:0;right:0;bottom:0;z-index:8;background:rgba(255,255,255,.97);border-top:1px solid var(--line);
-      display:flex;padding-bottom:env(safe-area-inset-bottom)}
+  nav{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--nav-bg);border-top:1px solid var(--line);
+      display:flex;padding-bottom:env(safe-area-inset-bottom);max-width:672px;margin:0 auto}
+  @media (min-width:673px){ nav{border-left:1px solid var(--line);border-right:1px solid var(--line);border-radius:12px 12px 0 0} }
   nav button{flex:1;border:0;background:none;font:inherit;font-size:12.5px;color:var(--muted);padding:11px 4px 13px;
              cursor:pointer;border-top:2px solid transparent;margin-top:-1px}
   nav button.on{color:var(--blue);font-weight:600;border-top-color:var(--blue)}
   /* descanso */
   .rest{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:9;width:calc(100% - 32px);max-width:608px;
-        background:var(--ink);color:#fff;border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px;
+        background:var(--bar-bg);color:var(--bar-fg);border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px;
         box-shadow:0 6px 22px rgba(17,20,24,.22)}
   .rest .t{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;min-width:64px}
   .rest button{font:inherit;font-size:13px;font-weight:550;border:1px solid rgba(255,255,255,.28);background:transparent;
@@ -81,8 +106,8 @@
   .sheet header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
   .sheet .body{overflow:auto;padding:12px 16px 20px}
   .pick{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line);cursor:pointer}
-  .pick:hover{background:#F8F9FA}
-  .toast{position:fixed;bottom:132px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;
+  .pick:hover{background:var(--hover)}
+  .toast{position:fixed;bottom:132px;left:50%;transform:translateX(-50%);background:var(--bar-bg);color:var(--bar-fg);
          padding:10px 16px;border-radius:999px;font-size:14px;z-index:30;max-width:90%;text-align:center}
   .sep{height:1px;background:var(--line);margin:12px 0}
   .big{font-size:30px;font-weight:650;letter-spacing:-0.03em;font-variant-numeric:tabular-nums}
@@ -166,6 +191,7 @@ let editingId = null;
 let picker = null;          // {mode:"routine"|"workout"|"swap", q, muscle}
 let noteOpen = null;
 let sheetText = null;
+let swEstado = null;   // estado do modo offline, quando publicado
 let progressEx = null;
 let confirmKey = null, openId = null;
 let toastMsg = null, toastT = null;
@@ -374,7 +400,7 @@ function vTreinar(){
       <div style="margin-top:10px">${wm.map(([g,n])=>`
         <div class="row" style="gap:8px;padding:3px 0">
           <span style="width:64px;font-size:13px" class="muted">${esc(g)}</span>
-          <span style="flex:1;height:8px;background:#EEF1F4;border-radius:99px;overflow:hidden;display:block">
+          <span style="flex:1;height:8px;background:var(--track);border-radius:99px;overflow:hidden;display:block">
             <span style="display:block;height:100%;width:${Math.round(n/mx*100)}%;background:var(--blue);border-radius:99px"></span></span>
           <span class="tnum" style="width:22px;text-align:right;font-size:13px">${n}</span>
         </div>`).join("")}</div></div>`;
@@ -453,7 +479,7 @@ function vSession(){
     en.sets.forEach((st,si) => {
       h += `<div class="setrow ${st.done?"ok":""}">
         <button class="setno" data-act="warm" data-i="${ei}" data-j="${si}" title="Marcar como aquecimento"
-          style="border:0;background:none;font:inherit;cursor:pointer;${st.warm?"color:#D9911C;font-weight:650":""}">${st.warm?"A":si+1}</button>
+          style="border:0;background:none;font:inherit;cursor:pointer;${st.warm?"color:var(--amber);font-weight:650":""}">${st.warm?"A":si+1}</button>
         <input class="num ${st.sug&&!st.done?"sug":""}" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="0" aria-label="Carga em kg, série ${si+1}">
         <input class="num ${st.sug&&!st.done?"sug":""}" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="0" aria-label="Repetições, série ${si+1}">
         <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Concluir série ${si+1} de ${esc(ex.name)}">✓</button>
@@ -549,6 +575,28 @@ function importFromText(txt){
 }
 function marcarBackup(){ S.meta={lastBackup:Date.now(), lastBackupCount:S.sessions.length}; save(); }
 
+function aplicarTema(){
+  const t=(S.meta && S.meta.tema) || "auto";
+  const raiz=document.documentElement;
+  if(t==="auto") raiz.removeAttribute("data-tema"); else raiz.setAttribute("data-tema",t);
+  const escuro = t==="escuro" ||
+    (t==="auto" && window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches);
+  const m=document.querySelector('meta[name="theme-color"]');
+  if(m) m.content = escuro ? "#101318" : "#F4F6F7";
+}
+if(window.matchMedia){
+  try{ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", aplicarTema); }catch(e){}
+}
+
+function temaCard(){
+  const t=(S.meta && S.meta.tema) || "auto";
+  const op=[["auto","Seguir o sistema"],["claro","Sempre claro"],["escuro","Sempre escuro"]];
+  return `<div class="card stack"><h3>Aparência</h3>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px">
+      ${op.map(([k,l])=>`<button class="chip ${t===k?"on":""}" data-act="tema" data-t="${k}">${l}</button>`).join("")}
+    </div></div>`;
+}
+
 function dataCard(){
   const onde = storageMode==="claude" ? "Salvo automaticamente na sua conta."
              : storageMode==="navegador" ? "Salvo neste navegador/celular."
@@ -556,6 +604,10 @@ function dataCard(){
   return `<div class="card stack">
     <h3>Seus dados</h3>
     <p class="muted" style="font-size:13px;margin-top:4px">${onde} ${S.sessions.length} treinos, ${S.routines.length} rotinas.</p>
+    ${swEstado ? `<p class="muted" style="font-size:13px">Modo offline: ${swEstado==="ativo"
+        ? "<span style=\"color:var(--green)\">ativo</span> — funciona sem internet."
+        : swEstado==="instalando" ? "instalando, recarregue a página uma vez."
+        : esc(swEstado)}</p>` : ""}
     <p class="muted" style="font-size:13px">${S.meta && S.meta.lastBackup ? "Último backup: "+dateLabel(S.meta.lastBackup)+" ("+(S.sessions.length-(S.meta.lastBackupCount||0))+" treinos desde então)." : "Você ainda não fez nenhum backup."}</p>
     <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap">
       <button class="btn sm" data-act="export">Baixar arquivo</button>
@@ -568,7 +620,7 @@ function dataCard(){
 }
 
 function vHistorico(){
-  if(!S.sessions.length) return `<div class="empty">Nenhum treino registrado ainda.<br>Ao concluir um treino ele aparece aqui.</div>` + dataCard();
+  if(!S.sessions.length) return `<div class="empty">Nenhum treino registrado ainda.<br>Ao concluir um treino ele aparece aqui.</div>` + temaCard() + dataCard();
   let h="";
   S.sessions.slice().reverse().forEach(s => {
     const open = openId===s.id;
@@ -593,7 +645,7 @@ function vHistorico(){
     }
     h += `</div>`;
   });
-  return h + dataCard();
+  return h + temaCard() + dataCard();
 }
 
 function vProgresso(){
@@ -656,14 +708,14 @@ function chart(hist, val){
   const line=pts.map((p,i)=>`${x(i).toFixed(1)},${y(val(p)).toFixed(1)}`).join(" ");
   const area=`${P},${H-20} ${line} ${x(pts.length-1).toFixed(1)},${H-20}`;
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="150" role="img" aria-label="Evolução do 1RM estimado" style="margin-top:8px">
-    <line x1="${P}" y1="${H-20}" x2="${W-8}" y2="${H-20}" stroke="#E1E5EA"/>
-    <polygon points="${area}" fill="#E9F0FC"/>
-    <polyline points="${line}" fill="none" stroke="#0F5FD1" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-    ${pts.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(val(p)).toFixed(1)}" r="2.8" fill="#fff" stroke="#0F5FD1" stroke-width="2"/>`).join("")}
-    <text x="2" y="14" font-size="10" fill="#6C727C">${fmt(mx)}</text>
-    <text x="2" y="${H-24}" font-size="10" fill="#6C727C">${fmt(mn)}</text>
-    <text x="${P}" y="${H-6}" font-size="10" fill="#6C727C">${dateLabel(pts[0].t)}</text>
-    <text x="${W-8}" y="${H-6}" font-size="10" fill="#6C727C" text-anchor="end">${dateLabel(pts[pts.length-1].t)}</text>
+    <line x1="${P}" y1="${H-20}" x2="${W-8}" y2="${H-20}" stroke="var(--line)"/>
+    <polygon points="${area}" fill="var(--blue-soft)"/>
+    <polyline points="${line}" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    ${pts.map((p,i)=>`<circle cx="${x(i).toFixed(1)}" cy="${y(val(p)).toFixed(1)}" r="2.8" fill="var(--surface)" stroke="var(--blue)" stroke-width="2"/>`).join("")}
+    <text x="2" y="14" font-size="10" fill="var(--muted)">${fmt(mx)}</text>
+    <text x="2" y="${H-24}" font-size="10" fill="var(--muted)">${fmt(mn)}</text>
+    <text x="${P}" y="${H-6}" font-size="10" fill="var(--muted)">${dateLabel(pts[0].t)}</text>
+    <text x="${W-8}" y="${H-6}" font-size="10" fill="var(--muted)" text-anchor="end">${dateLabel(pts[pts.length-1].t)}</text>
   </svg>`;
 }
 
@@ -725,11 +777,12 @@ function renderFloat(){
 
 function renderOffline(){
   const id="offbar"; const old=document.getElementById(id); if(old) old.remove();
-  if(navigator.onLine!==false) return;
+  if(navigator.onLine!==false){ document.body.style.paddingTop=""; return; }
   const d=document.createElement("div"); d.id=id;
-  d.style.cssText="position:fixed;top:0;left:0;right:0;z-index:12;background:#111418;color:#fff;font-size:12.5px;text-align:center;padding:4px";
-  d.textContent="Sem internet — o app segue funcionando, os dados são do próprio aparelho.";
+  d.style.cssText="position:fixed;top:0;left:0;right:0;z-index:12;background:var(--bar-bg);color:var(--bar-fg);font-size:12.5px;text-align:center;padding:5px 10px";
+  d.textContent="Sem internet — o app segue funcionando normalmente.";
   document.body.appendChild(d);
+  document.body.style.paddingTop = d.offsetHeight + "px";
 }
 window.addEventListener("online", renderOffline);
 window.addEventListener("offline", renderOffline);
@@ -882,6 +935,8 @@ document.addEventListener("click", ev => {
       } else { sheetText={mode:"copy",text:txt}; renderFloat(); }
       break; }
     case "copiedOk": marcarBackup(); sheetText=null; render(); toast("Backup registrado. Guarde esse texto em lugar seguro."); break;
+    case "tema": { S.meta=Object.assign({lastBackup:0,lastBackupCount:0}, S.meta||{}, {tema:t.dataset.t});
+      aplicarTema(); save(); render(); break; }
     case "pasteOpen": sheetText={mode:"paste",text:""}; renderFloat(); break;
     case "pasteApply": { const ta=document.getElementById("bkTa"); if(ta) importFromText(ta.value.trim()); break; }
     case "closeSheet": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break; sheetText=null; renderFloat(); break;
@@ -936,6 +991,7 @@ window.addEventListener("scroll", () => {
       const m=document.createElement("meta"); m.setAttribute(prop||"name",n); m.content=c; document.head.appendChild(m); };
     add("viewport","width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1");
     add("theme-color","#F4F6F7");
+    add("color-scheme","light dark");
     add("mobile-web-app-capable","yes");
     add("apple-mobile-web-app-capable","yes");
     add("apple-mobile-web-app-status-bar-style","default");
@@ -951,8 +1007,12 @@ window.addEventListener("scroll", () => {
       link("apple-touch-icon","./icon-192.png");
       link("icon","./icon-512.png");
       if("serviceWorker" in navigator){
-        window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));
-      }
+        const reg=()=>navigator.serviceWorker.register("./sw.js")
+          .then(()=>{ swEstado = navigator.serviceWorker.controller ? "ativo" : "instalando"; render(); })
+          .catch(err=>{ swEstado="falhou: "+(err && err.message ? err.message : "erro"); render(); });
+        if(document.readyState==="complete") reg(); else window.addEventListener("load",reg);
+        navigator.serviceWorker.addEventListener("controllerchange",()=>{ swEstado="ativo"; render(); });
+      } else { swEstado="não suportado"; }
     }
   }catch(e){}
 })();
@@ -967,6 +1027,6 @@ async function wake(on){
 }
 document.addEventListener("visibilitychange", () => { if(document.visibilityState==="visible" && S.active) wake(true); });
 
-load().then(() => { render(); if(S.active) wake(true); });
+load().then(() => { aplicarTema(); render(); if(S.active) wake(true); });
 })();
 </script>
