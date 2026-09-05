@@ -40,7 +40,7 @@
   p{margin:0}
   .muted{color:var(--muted)}
   .tnum{font-variant-numeric:tabular-nums}
-  .top{position:sticky;top:0;z-index:6;background:var(--paper);padding:16px 0 10px;border-bottom:1px solid transparent}
+  .top{position:sticky;top:var(--offtop,0px);z-index:6;background:var(--paper);padding:16px 0 10px;border-bottom:1px solid transparent}
   .top.scrolled{border-bottom-color:var(--line)}
   .toprow{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
   .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
@@ -143,25 +143,173 @@ const $ = (s,r) => (r||document).querySelector(s);
 
 /* ---------- biblioteca de exercícios ---------- */
 const LIB_RAW = [
- ["Supino reto com barra","Peito"],["Supino inclinado com halteres","Peito"],["Supino reto com halteres","Peito"],
- ["Crucifixo na máquina","Peito"],["Crossover na polia","Peito"],["Flexão de braço","Peito"],["Supino declinado","Peito"],
- ["Barra fixa","Costas"],["Puxada frontal na polia","Costas"],["Remada curvada com barra","Costas"],
- ["Remada baixa na polia","Costas"],["Remada unilateral com halter","Costas"],["Pulldown com braços estendidos","Costas"],
- ["Levantamento terra","Costas"],["Remada cavalinho","Costas"],
- ["Desenvolvimento com barra","Ombros"],["Desenvolvimento com halteres","Ombros"],["Elevação lateral","Ombros"],
- ["Elevação frontal","Ombros"],["Crucifixo invertido","Ombros"],["Encolhimento de ombros","Ombros"],["Remada alta","Ombros"],
- ["Rosca direta com barra","Bíceps"],["Rosca alternada com halteres","Bíceps"],["Rosca martelo","Bíceps"],
- ["Rosca scott","Bíceps"],["Rosca concentrada","Bíceps"],["Rosca na polia","Bíceps"],
- ["Tríceps na polia com corda","Tríceps"],["Tríceps testa","Tríceps"],["Tríceps francês","Tríceps"],
- ["Paralelas","Tríceps"],["Mergulho no banco","Tríceps"],["Tríceps coice","Tríceps"],
- ["Agachamento livre","Pernas"],["Leg press 45°","Pernas"],["Cadeira extensora","Pernas"],["Mesa flexora","Pernas"],
- ["Stiff","Pernas"],["Afundo","Pernas"],["Agachamento hack","Pernas"],["Búlgaro","Pernas"],
- ["Cadeira adutora","Pernas"],["Cadeira abdutora","Pernas"],["Panturrilha em pé","Pernas"],["Panturrilha no leg press","Pernas"],
- ["Prancha","Core"],["Abdominal supra","Core"],["Elevação de pernas","Core"],["Abdominal na polia","Core"],["Prancha lateral","Core"]
+ ["Supino reto com barra","Peito"],
+ ["Supino reto com halteres","Peito"],
+ ["Supino reto na máquina","Peito"],
+ ["Supino no Smith","Peito"],
+ ["Supino inclinado com barra","Peito"],
+ ["Supino inclinado com halteres","Peito"],
+ ["Supino inclinado na máquina","Peito"],
+ ["Supino declinado","Peito"],
+ ["Supino declinado com halteres","Peito"],
+ ["Supino fechado","Peito"],
+ ["Crucifixo reto com halteres","Peito"],
+ ["Crucifixo inclinado com halteres","Peito"],
+ ["Crucifixo na máquina","Peito"],
+ ["Peck deck","Peito"],
+ ["Crossover na polia","Peito"],
+ ["Crossover na polia alta","Peito"],
+ ["Crossover na polia baixa","Peito"],
+ ["Flexão de braço","Peito"],
+ ["Flexão de braço inclinada","Peito"],
+ ["Flexão de braço declinada","Peito"],
+ ["Flexão diamante","Peito"],
+ ["Mergulho para peito nas paralelas","Peito"],
+ ["Pullover com halter","Peito"],
+ ["Pullover na polia","Peito"],
+ ["Barra fixa","Costas"],
+ ["Barra fixa supinada","Costas"],
+ ["Barra fixa pegada neutra","Costas"],
+ ["Barra fixa assistida","Costas"],
+ ["Puxada frontal na polia","Costas"],
+ ["Puxada supinada na polia","Costas"],
+ ["Puxada com triângulo","Costas"],
+ ["Puxada pegada neutra","Costas"],
+ ["Remada curvada com barra","Costas"],
+ ["Remada curvada supinada","Costas"],
+ ["Remada curvada com halteres","Costas"],
+ ["Remada unilateral com halter","Costas"],
+ ["Remada baixa na polia","Costas"],
+ ["Remada cavalinho","Costas"],
+ ["Remada na máquina","Costas"],
+ ["Remada no Smith","Costas"],
+ ["Remada T-bar","Costas"],
+ ["Pulldown com braços estendidos","Costas"],
+ ["Levantamento terra","Costas"],
+ ["Levantamento terra sumô","Costas"],
+ ["Serrote na polia","Costas"],
+ ["Hiperextensão lombar","Costas"],
+ ["Remada invertida na barra","Costas"],
+ ["Desenvolvimento com barra","Ombros"],
+ ["Desenvolvimento com halteres","Ombros"],
+ ["Desenvolvimento na máquina","Ombros"],
+ ["Desenvolvimento no Smith","Ombros"],
+ ["Desenvolvimento Arnold","Ombros"],
+ ["Desenvolvimento militar em pé","Ombros"],
+ ["Elevação lateral","Ombros"],
+ ["Elevação lateral na polia","Ombros"],
+ ["Elevação lateral na máquina","Ombros"],
+ ["Elevação lateral inclinada","Ombros"],
+ ["Elevação frontal","Ombros"],
+ ["Elevação frontal com barra","Ombros"],
+ ["Elevação frontal na polia","Ombros"],
+ ["Crucifixo invertido","Ombros"],
+ ["Crucifixo invertido na máquina","Ombros"],
+ ["Face pull","Ombros"],
+ ["Remada alta","Ombros"],
+ ["Encolhimento de ombros","Ombros"],
+ ["Encolhimento com halteres","Ombros"],
+ ["Encolhimento no Smith","Ombros"],
+ ["Rosca direta com barra","Bíceps"],
+ ["Rosca direta com barra W","Bíceps"],
+ ["Rosca direta na polia","Bíceps"],
+ ["Rosca alternada com halteres","Bíceps"],
+ ["Rosca simultânea com halteres","Bíceps"],
+ ["Rosca martelo","Bíceps"],
+ ["Rosca martelo na polia","Bíceps"],
+ ["Rosca scott","Bíceps"],
+ ["Rosca scott na máquina","Bíceps"],
+ ["Rosca concentrada","Bíceps"],
+ ["Rosca na polia","Bíceps"],
+ ["Rosca com corda na polia","Bíceps"],
+ ["Rosca inversa","Bíceps"],
+ ["Rosca no banco inclinado","Bíceps"],
+ ["Rosca 21","Bíceps"],
+ ["Tríceps na polia com corda","Tríceps"],
+ ["Tríceps na polia com barra reta","Tríceps"],
+ ["Tríceps na polia com barra V","Tríceps"],
+ ["Tríceps na polia pegada pronada","Tríceps"],
+ ["Tríceps unilateral na polia","Tríceps"],
+ ["Tríceps testa","Tríceps"],
+ ["Tríceps testa com halteres","Tríceps"],
+ ["Tríceps francês","Tríceps"],
+ ["Tríceps francês unilateral","Tríceps"],
+ ["Tríceps coice","Tríceps"],
+ ["Tríceps na máquina","Tríceps"],
+ ["Paralelas","Tríceps"],
+ ["Mergulho no banco","Tríceps"],
+ ["Rosca de punho","Antebraço"],
+ ["Rosca de punho inversa","Antebraço"],
+ ["Rolo de punho","Antebraço"],
+ ["Farmer walk","Antebraço"],
+ ["Pegada isométrica na barra","Antebraço"],
+ ["Agachamento livre","Quadríceps"],
+ ["Agachamento frontal","Quadríceps"],
+ ["Agachamento no Smith","Quadríceps"],
+ ["Agachamento hack","Quadríceps"],
+ ["Agachamento goblet","Quadríceps"],
+ ["Agachamento sumô","Quadríceps"],
+ ["Agachamento na máquina","Quadríceps"],
+ ["Leg press 45°","Quadríceps"],
+ ["Leg press horizontal","Quadríceps"],
+ ["Cadeira extensora","Quadríceps"],
+ ["Cadeira extensora unilateral","Quadríceps"],
+ ["Afundo","Quadríceps"],
+ ["Afundo com halteres","Quadríceps"],
+ ["Passada com halteres","Quadríceps"],
+ ["Búlgaro","Quadríceps"],
+ ["Subida no banco","Quadríceps"],
+ ["Sissy squat","Quadríceps"],
+ ["Mesa flexora","Posterior"],
+ ["Mesa flexora unilateral","Posterior"],
+ ["Cadeira flexora","Posterior"],
+ ["Flexora em pé na máquina","Posterior"],
+ ["Stiff","Posterior"],
+ ["Stiff com halteres","Posterior"],
+ ["Levantamento terra romeno","Posterior"],
+ ["Bom dia com barra","Posterior"],
+ ["Flexão nórdica","Posterior"],
+ ["Elevação pélvica","Glúteos"],
+ ["Elevação pélvica na máquina","Glúteos"],
+ ["Ponte de glúteo","Glúteos"],
+ ["Coice na polia","Glúteos"],
+ ["Coice na máquina","Glúteos"],
+ ["Abdução na polia","Glúteos"],
+ ["Cadeira abdutora","Glúteos"],
+ ["Cadeira adutora","Glúteos"],
+ ["Abdução com elástico","Glúteos"],
+ ["Panturrilha em pé","Panturrilha"],
+ ["Panturrilha sentado","Panturrilha"],
+ ["Panturrilha no leg press","Panturrilha"],
+ ["Panturrilha no Smith","Panturrilha"],
+ ["Panturrilha unilateral","Panturrilha"],
+ ["Prancha","Core"],
+ ["Prancha lateral","Core"],
+ ["Abdominal supra","Core"],
+ ["Abdominal infra","Core"],
+ ["Abdominal na polia","Core"],
+ ["Abdominal na máquina","Core"],
+ ["Abdominal bicicleta","Core"],
+ ["Abdominal remador","Core"],
+ ["Elevação de pernas","Core"],
+ ["Elevação de pernas na barra","Core"],
+ ["Russian twist","Core"],
+ ["Rodinha abdominal","Core"],
+ ["Hollow hold","Core"],
+ ["Prancha com elevação","Core"],
+ ["Esteira","Cardio"],
+ ["Caminhada inclinada","Cardio"],
+ ["Bicicleta ergométrica","Cardio"],
+ ["Bicicleta spinning","Cardio"],
+ ["Elíptico","Cardio"],
+ ["Escada simulador","Cardio"],
+ ["Remo ergômetro","Cardio"],
+ ["Corda naval","Cardio"],
+ ["Pular corda","Cardio"]
 ];
 const slug = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
 const LIB = LIB_RAW.map(([name,muscle]) => ({id:slug(name), name, muscle}));
-const MUSCLES = ["Peito","Costas","Ombros","Bíceps","Tríceps","Pernas","Core"];
+const MUSCLES = ["Peito", "Costas", "Ombros", "Bíceps", "Tríceps", "Antebraço", "Quadríceps", "Posterior", "Glúteos", "Panturrilha", "Core", "Cardio", "Outros"];
 
 const TEMPLATES = {
   ABC: [
@@ -191,6 +339,9 @@ let editingId = null;
 let picker = null;          // {mode:"routine"|"workout"|"swap", q, muscle}
 let noteOpen = null;
 let sheetText = null;
+let exMenu = null;          // índice do exercício com o menu aberto
+const dobrado = new Set();  // exercícios com o estado invertido pelo toque
+let ultimoMexido = null;    // não recolhe o exercício em uso sob o dedo
 let swEstado = null;   // estado do modo offline, quando publicado
 let progressEx = null;
 let confirmKey = null, openId = null;
@@ -289,8 +440,8 @@ function historyFor(exId){
     let bw=0, be=0, br=0, vol=0, reps=0, bset=null;
     sets.forEach(s => { const w=num(s.w), r=num(s.r); vol+=w*r; reps+=r;
       if(w>bw) bw=w; if(r>br) br=r;
-      const e=e1rm(w,r);
-      if(e>be || (!bset && r>0)){ if(e>=be){ be=e; } if(!bset || (w>bset.w || (w===bset.w && r>bset.r))) bset={w,r}; } });
+      const e=e1rm(w,r); if(e>be) be=e;
+      if(!bset || w>bset.w || (w===bset.w && r>bset.r)) bset={w,r}; });
     out.push({t:se.end||se.start, sessionId:se.id, bw, be, br, vol, reps, bset, sets:sets.length});
   });
   return out.sort((a,b)=>a.t-b.t);
@@ -362,9 +513,10 @@ setInterval(() => {
 function renderTop(){
   let html="";
   if(S.active && view==="treinar"){
+    const v=volume(S.active.entries), n=doneSets(S.active.entries);
     html = `<div class="toprow">
       <div class="grow"><h1 class="ellip">${esc(S.active.name)}</h1>
-        <p class="muted" style="font-size:13.5px">Em andamento · <span id="elapsed" class="tnum">${dur(Date.now()-S.active.start)}</span></p></div>
+        <p class="muted tnum" style="font-size:13.5px"><span id="elapsed">${dur(Date.now()-S.active.start)}</span> · ${n} série${n===1?"":"s"}${v>0?" · "+ton(v):""}</p></div>
       <button class="btn primary" data-act="finish">Concluir</button></div>`;
   } else {
     const titles={treinar:"Treinar",rotinas:"Rotinas",historico:"Histórico",progresso:"Progresso",edit:"Editar rotina"};
@@ -443,57 +595,70 @@ function vTreinar(){
   return h;
 }
 
+function sessaoAberta(ei, en){
+  const total=en.sets.length, done=en.sets.filter(s=>s.done).length;
+  // pronto = fechado por padrão, menos o exercício em que se acabou de mexer
+  const padrao = !(total>0 && done===total) || ei===ultimoMexido;
+  return dobrado.has(ei) ? !padrao : padrao;
+}
+
 function vSession(){
   const a=S.active;
-  let h = `<div class="stats stack">
-      <div class="stat"><b>${doneSets(a.entries)}</b><span>séries feitas</span></div>
-      <div class="stat"><b>${ton(volume(a.entries))}</b><span>volume</span></div>
-      <div class="stat"><b>${a.entries.length}</b><span>exercícios</span></div>
-    </div>
-    <p class="muted stack" style="font-size:12.5px">Toque no número da série para marcá-la como aquecimento (A) — ela não conta no volume nem nos recordes.</p>`;
+  let h="";
+  if(!S.sessions.length){
+    h += `<p class="muted" style="font-size:12.5px;margin:2px 0 10px">Toque no número da série para marcá-la como aquecimento.</p>`;
+  }
 
+  let primeiroAberto = true;
   a.entries.forEach((en,ei) => {
     const ex=exById(en.exId);
     const total=en.sets.length, done=en.sets.filter(s=>s.done).length;
     const cls = done===0 ? "" : (done===total ? "done" : "doing");
-    const prev = lastSetsFor(en.exId);
-    const rec = bestFor(en.exId, null);
-    let prIdx = -1, prBest = 0;
-    if(rec.w>0) en.sets.forEach((st,si) => { if(!st.done || st.warm) return;
-      const W=num(st.w), R=num(st.r), E=e1rm(W,R);
-      if(W>0 && (W>rec.w+0.001 || E>rec.e+0.001) && E>prBest){ prBest=E; prIdx=si; } });
+    const aberto = sessaoAberta(ei,en);
+    const feitas = en.sets.filter(s=>s.done && !s.warm);
+    const soAquece = !feitas.length && en.sets.some(s=>s.done && s.warm);
+
     h += `<div class="ex ${cls}">
-      <div class="between" style="align-items:flex-start">
+      <div class="between" data-act="dobrar" data-i="${ei}" role="button" tabindex="0"
+        aria-expanded="${aberto?"true":"false"}" aria-label="${aberto?"Recolher":"Abrir"} ${esc(ex.name)}"
+        style="cursor:pointer;align-items:center">
         <div class="grow">
           <h3 class="ellip">${esc(ex.name)}</h3>
-          <p class="muted" style="font-size:12.5px">${esc(ex.muscle)}${en.reps?" · alvo "+en.sets.length+"×"+esc(en.reps):""}${prev?" · última: "+prev.map(s=>fmt(num(s.w))+"×"+num(s.r)).join(", "):" · primeira vez"}</p>
+          ${aberto ? "" : `<p class="muted tnum" style="font-size:12.5px">${
+              feitas.length ? feitas.map(s=>fmt(num(s.w))+"×"+num(s.r)).join("  ") : (soAquece ? "só aquecimento" : "sem séries")}</p>`}
         </div>
-        <div class="row" style="gap:2px">
-          <button class="btn ghost sm" data-act="noteEx" data-i="${ei}" aria-label="Anotação">nota</button>
-          <button class="btn ghost sm" data-act="swapEx" data-i="${ei}" aria-label="Trocar exercício">trocar</button>
-          <button class="btn ghost sm danger" data-act="rmEx" data-i="${ei}" aria-label="Remover exercício">×</button>
-        </div>
-      </div>
-      ${(noteOpen===ei || en.note) ? `<input class="field" style="margin-top:8px;font-size:14px" data-note="${ei}" data-k="n-${ei}" placeholder="Anotação: pegada, altura do banco, máquina..." value="${esc(en.note||"")}">` : ""}
-      <div class="setrow head" style="margin-top:8px"><span>#</span><span>kg</span><span>reps</span><span></span></div>`;
-    en.sets.forEach((st,si) => {
-      h += `<div class="setrow ${st.done?"ok":""}">
-        <button class="setno" data-act="warm" data-i="${ei}" data-j="${si}" title="Marcar como aquecimento"
-          style="border:0;background:none;font:inherit;cursor:pointer;${st.warm?"color:var(--amber);font-weight:650":""}">${st.warm?"A":si+1}</button>
-        <input class="num ${st.sug&&!st.done?"sug":""}" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="0" aria-label="Carga em kg, série ${si+1}">
-        <input class="num ${st.sug&&!st.done?"sug":""}" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="0" aria-label="Repetições, série ${si+1}">
-        <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Concluir série ${si+1} de ${esc(ex.name)}">✓</button>
-      </div>${si===prIdx?`<div style="margin:-2px 0 4px 34px"><span class="tag pr">recorde pessoal</span></div>`:""}`;
-    });
-    h += `<div class="row" style="margin-top:8px;gap:6px">
-        <button class="btn sm" data-act="addSet" data-i="${ei}">+ série</button>
-        <button class="btn sm" data-act="delSet" data-i="${ei}">− série</button>
-        <button class="btn sm" data-act="restCycle" data-i="${ei}" style="margin-left:auto;color:var(--muted)">descanso ${en.rest?mmss(en.rest):"desligado"}</button>
-      </div></div>`;
+        <button class="btn ghost sm" data-act="exMenu" data-i="${ei}" aria-label="Opções de ${esc(ex.name)}"
+          style="font-size:18px;line-height:1;padding:4px 8px">⋯</button>
+      </div>`;
+
+    if(aberto){
+      const prev = lastSetsFor(en.exId);
+      const rec = bestFor(en.exId, null);
+      let prIdx=-1, prBest=0;
+      if(rec.w>0) en.sets.forEach((st,si) => { if(!st.done || st.warm) return;
+        const W=num(st.w), R=num(st.r), E=e1rm(W,R);
+        if(W>0 && (W>rec.w+0.001 || E>rec.e+0.001) && E>prBest){ prBest=E; prIdx=si; } });
+
+      h += `<p class="muted" style="font-size:12.5px;margin-top:2px">${esc(ex.muscle)}${
+        prev ? " · última: "+prev.map(s=>fmt(num(s.w))+"×"+num(s.r)).join(", ") : " · primeira vez"}</p>`;
+      if(en.note) h += `<p class="muted" style="font-size:12.5px;margin-top:4px;font-style:italic">${esc(en.note)}</p>`;
+      h += primeiroAberto ? `<div class="setrow head" style="margin-top:8px"><span>#</span><span>kg</span><span>reps</span><span></span></div>`
+                          : `<div style="height:8px"></div>`;
+      primeiroAberto = false;
+      en.sets.forEach((st,si) => {
+        h += `<div class="setrow ${st.done?"ok":""}">
+          <button class="setno" data-act="warm" data-i="${ei}" data-j="${si}" title="Aquecimento"
+            style="border:0;background:none;font:inherit;cursor:pointer;${st.warm?"color:var(--amber);font-weight:650":""}">${st.warm?"A":si+1}</button>
+          <input class="num ${st.sug&&!st.done?"sug":""}" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="0" aria-label="Carga em kg, série ${si+1}">
+          <input class="num ${st.sug&&!st.done?"sug":""}" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="${en.reps?esc(en.reps):"0"}" aria-label="Repetições, série ${si+1}${en.reps?", alvo "+esc(en.reps):""}">
+          <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Concluir série ${si+1} de ${esc(ex.name)}">✓</button>
+        </div>${si===prIdx?`<div style="margin:-2px 0 4px 34px"><span class="tag pr">recorde pessoal</span></div>`:""}`;
+      });
+    }
+    h += `</div>`;
   });
 
   h += `<div class="stack"><button class="btn wide" data-act="pickWorkout">+ Adicionar exercício</button></div>
-        <div class="stack"><button class="btn wide primary" data-act="finish">Concluir treino</button></div>
         <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">${confirmKey==="cancel"?"Confirmar descarte":"Descartar treino"}</button></div>`;
   return h;
 }
@@ -720,12 +885,32 @@ function chart(hist, val){
 }
 
 /* ---------- seletor de exercícios ---------- */
+function recentesIds(limite){
+  const vistos=[];
+  for(let i=S.sessions.length-1;i>=0 && vistos.length<limite;i--){
+    S.sessions[i].entries.forEach(en=>{ if(!vistos.includes(en.exId) && vistos.length<limite) vistos.push(en.exId); });
+  }
+  return vistos;
+}
+
 function renderPicker(){
   const host=$("#float");
   if(!picker){ return; }
   const q=(picker.q||"").toLowerCase();
   let list=allEx().filter(e => (!picker.muscle || e.muscle===picker.muscle) &&
     (!q || e.name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes(q.normalize("NFD").replace(/[\u0300-\u036f]/g,""))));
+  if(picker.novo){
+    host.insertAdjacentHTML("beforeend", `<div class="overlay" data-act="closePicker"><div class="sheet" data-stop="1">
+      <header><h2>Novo exercício</h2><button class="btn sm" data-act="cancelNovo">Voltar</button></header>
+      <div class="body">
+        <p>Em qual grupo entra <strong>${esc(picker.novo)}</strong>?</p>
+        <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:12px">
+          ${MUSCLES.map(m=>`<button class="chip" data-act="novoGrupo" data-m="${m}">${m}</button>`).join("")}
+        </div>
+        <p class="muted" style="font-size:12.5px;margin-top:14px">O grupo é usado no resumo de séries por músculo da semana.</p>
+      </div></div></div>`);
+    return;
+  }
   const html = `<div class="overlay" data-act="closePicker">
     <div class="sheet" data-stop="1">
       <header><h2>Escolher exercício</h2><button class="btn sm" data-act="closePicker">Fechar</button></header>
@@ -735,6 +920,11 @@ function renderPicker(){
           <button class="chip ${!picker.muscle?"on":""}" data-act="mus" data-m="">Todos</button>
           ${MUSCLES.map(m=>`<button class="chip ${picker.muscle===m?"on":""}" data-act="mus" data-m="${m}">${m}</button>`).join("")}
         </div>
+        ${(!q && !picker.muscle && recentesIds(6).length) ? `
+          <p class="muted" style="font-size:12.5px;margin-top:14px">Usados recentemente</p>
+          <div>${recentesIds(6).map(id=>exById(id)).map(e=>`<div class="pick" data-act="choose" data-id="${e.id}">
+              <span class="grow ellip">${esc(e.name)}</span><span class="tag mus">${esc(e.muscle)}</span></div>`).join("")}</div>
+          <p class="muted" style="font-size:12.5px;margin-top:16px">Todos os exercícios</p>` : ""}
         <div style="margin-top:10px">
           ${list.map(e=>`<div class="pick" data-act="choose" data-id="${e.id}">
               <span class="grow ellip">${esc(e.name)}</span><span class="tag mus">${esc(e.muscle)}</span></div>`).join("")
@@ -756,6 +946,43 @@ function renderFloat(){
       <button data-act="restSkip">pular</button></div>`);
   }
   if(picker) renderPicker();
+  if(exMenu!==null && S.active && S.active.entries[exMenu]){
+    const ei=exMenu, en=S.active.entries[ei], ex=exById(en.exId);
+    const descansos=[0,60,90,120,150,180];
+    host.insertAdjacentHTML("beforeend", `<div class="overlay" data-act="fecharMenu"><div class="sheet" data-stop="1">
+      <header><h2 class="ellip">${esc(ex.name)}</h2><button class="btn sm" data-act="fecharMenu">Fechar</button></header>
+      <div class="body">
+        <label class="muted" style="font-size:12.5px">Anotação</label>
+        <input class="field" style="margin-top:6px" data-note="${ei}" value="${esc(en.note||"")}" placeholder="Pegada, altura do banco, número da máquina...">
+
+        <div class="between" style="margin-top:16px">
+          <span>Séries</span>
+          <div class="row" style="gap:6px">
+            <button class="btn sm" data-act="delSet" data-i="${ei}" aria-label="Menos uma série">−</button>
+            <span class="tnum" style="min-width:20px;text-align:center">${en.sets.length}</span>
+            <button class="btn sm" data-act="addSet" data-i="${ei}" aria-label="Mais uma série">+</button>
+          </div>
+        </div>
+
+        <p style="margin-top:16px">Descanso</p>
+        <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+          ${descansos.map(d=>`<button class="chip ${(en.rest||0)===d?"on":""}" data-act="setRest" data-i="${ei}" data-d="${d}">${d?mmss(d):"desligado"}</button>`).join("")}
+        </div>
+
+        <div class="between" style="margin-top:16px">
+          <span>Posição no treino</span>
+          <div class="row" style="gap:6px">
+            <button class="btn sm" data-act="moverEx" data-i="${ei}" data-d="-1" ${ei===0?"disabled":""} aria-label="Subir">↑</button>
+            <span class="tnum" style="min-width:38px;text-align:center">${ei+1} de ${S.active.entries.length}</span>
+            <button class="btn sm" data-act="moverEx" data-i="${ei}" data-d="1" ${ei===S.active.entries.length-1?"disabled":""} aria-label="Descer">↓</button>
+          </div>
+        </div>
+
+        <button class="btn wide stack" data-act="swapEx" data-i="${ei}">Trocar por outro exercício</button>
+        <button class="btn wide danger" style="margin-top:8px" data-act="rmEx" data-i="${ei}">Remover do treino</button>
+        <p class="muted" style="font-size:12.5px;margin-top:14px">Dica: toque no número de uma série para marcá-la como aquecimento — ela fica de fora do volume e dos recordes.</p>
+      </div></div></div>`);
+  }
   if(sheetText){
     const copiar = sheetText.mode==="copy";
     host.insertAdjacentHTML("beforeend", `<div class="overlay" data-act="closeSheet"><div class="sheet" data-stop="1">
@@ -777,12 +1004,14 @@ function renderFloat(){
 
 function renderOffline(){
   const id="offbar"; const old=document.getElementById(id); if(old) old.remove();
-  if(navigator.onLine!==false){ document.body.style.paddingTop=""; return; }
+  if(navigator.onLine!==false){ document.body.style.paddingTop=""; document.documentElement.style.setProperty("--offtop","0px"); return; }
   const d=document.createElement("div"); d.id=id;
   d.style.cssText="position:fixed;top:0;left:0;right:0;z-index:12;background:var(--bar-bg);color:var(--bar-fg);font-size:12.5px;text-align:center;padding:5px 10px";
   d.textContent="Sem internet — o app segue funcionando normalmente.";
   document.body.appendChild(d);
-  document.body.style.paddingTop = d.offsetHeight + "px";
+  const alt = (d.offsetHeight || 26) + "px";
+  document.body.style.paddingTop = alt;
+  document.documentElement.style.setProperty("--offtop", alt);
 }
 window.addEventListener("online", renderOffline);
 window.addEventListener("offline", renderOffline);
@@ -834,7 +1063,7 @@ function finish(){
     else if(be>before.e+0.001) prs.push(exById(en.exId).name+" (1RM est.)");
   });
   S.sessions.push({id:uid(), routineId:a.routineId, name:a.name, start:a.start, end:Date.now(), entries});
-  S.active=null; restEnd=0; noteOpen=null; view="historico"; wake(false); save(); render();
+  S.active=null; restEnd=0; noteOpen=null; exMenu=null; dobrado.clear(); ultimoMexido=null; view="historico"; wake(false); save(); render();
   toast(prs.length ? "Treino salvo · "+prs.length+" recorde"+(prs.length>1?"s":"")+": "+prs.slice(0,2).join(", ") : "Treino salvo.");
 }
 
@@ -880,13 +1109,16 @@ document.addEventListener("click", ev => {
       else if(picker.mode==="routine"){ const r=S.routines.find(x=>x.id===editingId); r.items.push({exId:id,sets:3,reps:"8-12",rest:90}); }
       else { S.active.entries.push({exId:id, rest:90, sets:[{w:"",r:"",done:false},{w:"",r:"",done:false},{w:"",r:"",done:false}]}); }
       picker=null; save(); render(); break;
-    case "newEx": { const name=picker.q.trim(); if(!name) break;
-      const ex={id:"c_"+slug(name)+"_"+uid(), name, muscle:picker.muscle||"Outros"};
+    case "newEx": { const nome=(picker.q||"").trim(); if(!nome) break;
+      picker.novo = nome.charAt(0).toUpperCase()+nome.slice(1); renderFloat(); break; }
+    case "cancelNovo": picker.novo=null; renderFloat(); break;
+    case "novoGrupo": {
+      const ex={id:"c_"+slug(picker.novo)+"_"+uid(), name:picker.novo, muscle:t.dataset.m};
       S.custom.push(ex);
       if(picker.mode==="swap"){ S.active.entries[picker.i].exId=ex.id; }
       else if(picker.mode==="routine"){ const r=S.routines.find(x=>x.id===editingId); r.items.push({exId:ex.id,sets:3,reps:"8-12",rest:90}); }
-      else { S.active.entries.push({exId:ex.id, rest:90, sets:[{w:"",r:"",done:false},{w:"",r:"",done:false},{w:"",r:"",done:false}]}); }
-      picker=null; save(); render(); break; }
+      else { S.active.entries.push({exId:ex.id, rest:90, reps:"", note:"", sets:[{w:"",r:"",done:false},{w:"",r:"",done:false},{w:"",r:"",done:false}]}); }
+      picker=null; save(); render(); toast("Exercício criado em "+t.dataset.m+"."); break; }
     case "start": { const r=S.routines.find(x=>x.id===id); if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break;} newSession(r); break; }
     case "startEmpty": if(S.active){ toast("Já existe um treino em andamento."); } else newSession(null); render(); break;
     case "repeat": { const s=S.sessions.find(x=>x.id===id);
@@ -894,15 +1126,23 @@ document.addEventListener("click", ev => {
       newSession({id:s.routineId,name:s.name,items:s.entries.map(en=>({exId:en.exId,sets:en.sets.length,reps:"",rest:90}))}); break; }
     case "check": { const st=S.active.entries[i].sets[j];
       if(!st.done && (num(st.w)===0 && num(st.r)===0)){ toast("Preencha carga e repetições."); break; }
-      st.done=!st.done; st.sug=false;
+      st.done=!st.done; st.sug=false; ultimoMexido=i; dobrado.delete(i);
       if(st.done && (S.active.entries[i].rest||0)>0) startRest(S.active.entries[i].rest);
       save(); render(); break; }
     case "addSet": { const en=S.active.entries[i]; const l=en.sets[en.sets.length-1]||{w:"",r:""};
       en.sets.push({w:l.w,r:l.r,done:false,sug:true}); save(); render(); break; }
     case "delSet": { const en=S.active.entries[i]; if(en.sets.length>1) en.sets.pop(); save(); render(); break; }
-    case "rmEx": S.active.entries.splice(i,1); save(); render(); break;
-    case "noteEx": noteOpen = noteOpen===i ? null : i; render(); break;
-    case "swapEx": picker={mode:"swap", i:i, q:"", muscle:null}; renderFloat(); break;
+    case "rmEx": S.active.entries.splice(i,1); exMenu=null; dobrado.clear(); ultimoMexido=null; save(); render(); break;
+    case "exMenu": exMenu=i; renderFloat(); break;
+    case "moverEx": { const d=+t.dataset.d, alvo=i+d, es=S.active.entries;
+      if(alvo<0 || alvo>=es.length) break;
+      const [mv]=es.splice(i,1); es.splice(alvo,0,mv);
+      exMenu=alvo; dobrado.clear(); ultimoMexido=null; save(); render(); break; }
+    case "fecharMenu": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break; exMenu=null; render(); break;
+    case "dobrar": if(ultimoMexido!==null && ultimoMexido!==i) ultimoMexido=null;
+      if(dobrado.has(i)) dobrado.delete(i); else dobrado.add(i); render(); break;
+    case "setRest": S.active.entries[i].rest=+t.dataset.d; save(); render(); break;
+    case "swapEx": exMenu=null; picker={mode:"swap", i:i, q:"", muscle:null}; renderFloat(); break;
     case "warm": { const st=S.active.entries[i].sets[j]; st.warm=!st.warm; save(); render(); break; }
     case "restCycle": { const opts=[60,90,120,150,180,0]; const en=S.active.entries[i];
       en.rest = opts[(opts.indexOf(en.rest)+1+opts.length)%opts.length] ?? 90; save(); render(); break; }
@@ -950,6 +1190,7 @@ document.addEventListener("input", ev => {
   const el=ev.target;
   if(el.id==="pq"){ picker.q=el.value; renderFloat(); const q=$("#pq"); if(q){ q.focus(); q.setSelectionRange(q.value.length,q.value.length);} return; }
   if(el.dataset.f && el.dataset.e!==undefined && el.dataset.s!==undefined && S.active){
+    if(+el.dataset.e !== ultimoMexido) ultimoMexido = +el.dataset.e;
     const st=S.active.entries[+el.dataset.e].sets[+el.dataset.s];
     st[el.dataset.f]=el.value; st.sug=false; el.classList.remove("sug"); save(); return;
   }
@@ -975,7 +1216,10 @@ document.addEventListener("change", ev => {
 });
 
 document.addEventListener("keydown", ev => {
-  if(ev.key==="Escape" && (picker||sheetText)){ picker=null; sheetText=null; renderFloat(); }
+  if((ev.key==="Enter"||ev.key===" ") && ev.target.getAttribute && ev.target.getAttribute("role")==="button"){
+    ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); return;
+  }
+  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null)){ picker=null; sheetText=null; exMenu=null; renderFloat(); }
 });
 
 window.addEventListener("scroll", () => {

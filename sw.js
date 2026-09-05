@@ -1,38 +1,67 @@
 /* Service worker do app de treino.
-   Estratégia: a página tenta a rede primeiro (para pegar atualizações),
-   e cai para o cache quando não há internet. Ícones e manifesto vêm do cache. */
-const V = "treino-v1";
-const ASSETS = ["./", "./index.html", "./manifest.webmanifest",
-                "./icon-192.png", "./icon-512.png", "./icon-maskable.png"];
+   Estratégia: a página tenta a rede primeiro (para pegar atualizações) e cai
+   para o cache quando não há internet.
+   Importante: o cache é montado item a item. Se um ícone faltar, o app continua
+   funcionando offline — só aquele arquivo fica de fora. */
+const V = "treino-v2";
+const ESSENCIAL = ["./index.html", "./"];
+const OPCIONAL  = ["./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./icon-maskable.png"];
 
 self.addEventListener("install", e => {
-  e.waitUntil(caches.open(V).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil((async () => {
+    const c = await caches.open(V);
+    // o essencial precisa entrar; se a rede falhar aqui, tenta de novo na próxima visita
+    await Promise.allSettled(ESSENCIAL.map(u => c.add(new Request(u, {cache: "reload"}))));
+    await Promise.allSettled(OPCIONAL.map(u => c.add(new Request(u, {cache: "reload"}))));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", e => {
-  e.waitUntil(
-    caches.keys()
-      .then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
+  e.waitUntil((async () => {
+    const ks = await caches.keys();
+    await Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", e => {
   const req = e.request;
-  if (req.method !== "GET" || new URL(req.url).origin !== self.location.origin) return;
+  if (req.method !== "GET") return;
+  let url;
+  try { url = new URL(req.url); } catch (err) { return; }
+  if (url.origin !== self.location.origin) return;
 
+  // Navegação: rede primeiro, cache como rede de segurança
   if (req.mode === "navigate") {
-    e.respondWith(
-      fetch(req)
-        .then(res => { const copy = res.clone(); caches.open(V).then(c => c.put("./index.html", copy)); return res; })
-        .catch(() => caches.match("./index.html").then(r => r || caches.match("./")))
-    );
+    e.respondWith((async () => {
+      try {
+        const res = await fetch(req);
+        const c = await caches.open(V);
+        c.put("./index.html", res.clone());
+        return res;
+      } catch (err) {
+        const c = await caches.open(V);
+        return (await c.match("./index.html")) ||
+               (await c.match("./")) ||
+               new Response("<h1>App indisponível offline</h1><p>Abra uma vez com internet.</p>",
+                            {headers: {"Content-Type": "text/html; charset=utf-8"}});
+      }
+    })());
     return;
   }
 
-  e.respondWith(
-    caches.match(req).then(hit => hit || fetch(req).then(res => {
-      const copy = res.clone(); caches.open(V).then(c => c.put(req, copy)); return res;
-    }))
-  );
+  // Demais arquivos: cache primeiro
+  e.respondWith((async () => {
+    const hit = await caches.match(req);
+    if (hit) return hit;
+    try {
+      const res = await fetch(req);
+      const c = await caches.open(V);
+      c.put(req, res.clone());
+      return res;
+    } catch (err) {
+      return new Response("", {status: 504});
+    }
+  })());
 });
