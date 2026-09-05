@@ -71,7 +71,7 @@
   .num{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 6px;text-align:center;
        font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;background:var(--surface);color:var(--ink)}
   .num:focus{outline:2px solid var(--blue);outline-offset:-1px;border-color:transparent}
-  .num.sug{color:var(--muted);font-weight:500}
+  .num::placeholder{color:var(--muted);font-weight:500;opacity:1}
   /* exercício */
   .ex{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--line);border-radius:12px;padding:12px 14px}
   .ex + .ex{margin-top:10px}
@@ -115,11 +115,21 @@
   .stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
   .stat b{display:block;font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
   .stat span{font-size:12px;color:var(--muted)}
+  .dots{display:flex;gap:4px;margin:2px 0}
+  .dot{flex:1;height:5px;border-radius:3px;background:var(--track);cursor:pointer;padding:0;
+       border-top:9px solid transparent;border-bottom:9px solid transparent;background-clip:padding-box}
+  .dot.done{background:var(--green)}
+  .dot.now:not(.done){background:var(--blue)}
+  .dot.now{box-shadow:0 0 0 2px var(--blue)}
+  .setrow.comhist{grid-template-columns:24px 1fr 1fr 62px 42px}
+  .hist{font-size:11.5px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
   .empty{text-align:center;padding:28px 16px;color:var(--muted)}
   a{color:var(--blue)}
   :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
   @media (max-width:380px){
     .setrow{grid-template-columns:24px 1fr 1fr 40px;gap:6px}
+    .setrow.comhist{grid-template-columns:22px 1fr 1fr 54px 40px;gap:5px}
+    .hist{font-size:11px}
     .btn.sm{padding:5px 7px}
     .btn.ghost.sm{padding:5px 3px;font-size:12.5px}
     .stat b{font-size:18px}
@@ -337,11 +347,15 @@ let S = {custom:[], routines:[], sessions:[], active:null, meta:{lastBackup:0,la
 let view = "treinar";
 let editingId = null;
 let picker = null;          // {mode:"routine"|"workout"|"swap", q, muscle}
-let noteOpen = null;
 let sheetText = null;
 let exMenu = null;          // índice do exercício com o menu aberto
 const dobrado = new Set();  // exercícios com o estado invertido pelo toque
 let ultimoMexido = null;    // não recolhe o exercício em uso sob o dedo
+let naSessao = false;       // ao abrir o app, começa sempre na página inicial
+let focoIdx = 0;            // exercício em foco na sessão
+let progSheet = null;       // exercício com o gráfico de progressão aberto
+let voltarPara = "treinar"; // de onde a tela de configurações foi aberta
+const modo = () => (S.meta && S.meta.modo) || "foco";
 let swEstado = null;   // estado do modo offline, quando publicado
 let progressEx = null;
 let confirmKey = null, openId = null;
@@ -405,6 +419,26 @@ async function load(){
     }catch(e2){ /* primeira execução: sem dados salvos */ }
   }
   if(!S.meta) S.meta={lastBackup:0, lastBackupCount:0};
+  migrar();
+}
+
+/* Ajusta dados gravados por versões anteriores do app. Roda em toda abertura
+   e também depois de restaurar um backup antigo. */
+function migrar(){
+  const arrumaSets = en => {
+    if(!en || !Array.isArray(en.sets)) return;
+    if(en.rest===undefined) en.rest=90;
+    if(en.reps===undefined) en.reps="";
+    if(en.note===undefined) en.note="";
+    en.sets.forEach(st => {
+      if(typeof st.sug === "object" && st.sug !== null) return;   // já é o formato novo
+      const tinha = st.sug === true && !st.done && (st.w!=="" || st.r!=="");
+      st.sug = tinha ? {w: fmt(num(st.w)), r: String(num(st.r))} : null;
+      if(tinha){ st.w=""; st.r=""; }                              // vira sugestão, não valor
+    });
+  };
+  if(S.active && Array.isArray(S.active.entries)) S.active.entries.forEach(arrumaSets);
+  S.routines.forEach(r => { if(!Array.isArray(r.items)) r.items=[]; });
 }
 /* grava na hora ao sair/minimizar, para não depender do atraso do save */
 ["pagehide","visibilitychange","beforeunload"].forEach(ev =>
@@ -414,6 +448,9 @@ async function load(){
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const num = v => { const n = parseFloat(String(v).replace(",",".")); return isFinite(n) ? n : 0; };
 const fmt = n => (Math.round(n*10)/10).toString().replace(".",",");
+// padrão do app: repetições × carga  (ex.: 12×42,5)
+const par = (w,r) => num(w)>0 ? num(r)+"×"+fmt(num(w)) : num(r)+" reps";
+const parKg = (w,r) => num(w)>0 ? num(r)+"×"+fmt(num(w))+" kg" : num(r)+" reps";
 const e1rm = (w,r) => w>0 && r>0 ? w*(1+r/30) : 0;
 function ton(kg){ return kg >= 1000 ? fmt(kg/1000)+" t" : Math.round(kg)+" kg"; }
 function mmss(s){ s=Math.max(0,Math.round(s)); return Math.floor(s/60)+":"+String(s%60).padStart(2,"0"); }
@@ -512,23 +549,27 @@ setInterval(() => {
 
 function renderTop(){
   let html="";
-  if(S.active && view==="treinar"){
+  if(S.active && naSessao && view==="treinar"){
     const v=volume(S.active.entries), n=doneSets(S.active.entries);
     html = `<div class="toprow">
       <div class="grow"><h1 class="ellip">${esc(S.active.name)}</h1>
         <p class="muted tnum" style="font-size:13.5px"><span id="elapsed">${dur(Date.now()-S.active.start)}</span> · ${n} série${n===1?"":"s"}${v>0?" · "+ton(v):""}</p></div>
       <button class="btn primary" data-act="finish">Concluir</button></div>`;
   } else {
-    const titles={treinar:"Treinar",rotinas:"Rotinas",historico:"Histórico",progresso:"Progresso",edit:"Editar rotina"};
-    html = `<div class="toprow"><h1>${titles[view]||"Treino"}</h1>`;
+    const titles={treinar:"Treinar",rotinas:"Rotinas",historico:"Histórico",progresso:"Progresso",
+                  edit:"Editar rotina",config:"Configurações"};
+    html = `<div class="toprow"><h1>${titles[view]||"Treino"}</h1><div class="row" style="gap:6px">`;
     if(view==="rotinas") html += `<button class="btn sm" data-act="newRoutine">Nova rotina</button>`;
-    html += `</div>`;
+    if(view==="config") html += `<button class="btn sm" data-act="voltarConfig">Voltar</button>`;
+    else if(view!=="edit") html += `<button class="btn ghost sm" data-act="abrirConfig" aria-label="Configurações"
+        style="font-size:19px;line-height:1;padding:4px 8px">⚙</button>`;
+    html += `</div></div>`;
   }
   $("#top").innerHTML = html;
 }
 
 function vTreinar(){
-  if(S.active) return vSession();
+  if(S.active && naSessao) return vSession();
   const w=weekStats();
   const last=S.sessions.slice(-3).reverse();
   let h = `<div class="stats stack">
@@ -537,6 +578,17 @@ function vTreinar(){
       <div class="stat"><b>${S.sessions.length}</b><span>treinos no total</span></div>
     </div>`;
 
+  if(S.active){
+    const feitas=doneSets(S.active.entries);
+    h += `<div class="card stack" style="border-left:3px solid var(--amber)">
+      <div class="between">
+        <div class="grow"><h3 class="ellip">${esc(S.active.name)}</h3>
+          <p class="muted tnum" style="font-size:13px">Em andamento · ${dur(Date.now()-S.active.start)} · ${feitas} série${feitas===1?"":"s"}</p></div>
+        <button class="btn primary" data-act="retomar">Continuar</button>
+      </div>
+      <div style="text-align:center;margin-top:8px"><button class="btn ghost danger sm" data-act="cancelWorkout">${confirmKey==="cancel"?"Confirmar descarte":"Descartar treino"}</button></div>
+    </div>`;
+  }
   const desde = S.sessions.length - ((S.meta&&S.meta.lastBackupCount)||0);
   if(S.sessions.length>=3 && desde>=5){
     h += `<div class="card stack" style="border-left:3px solid var(--amber)">
@@ -580,7 +632,6 @@ function vTreinar(){
           <button class="btn primary" data-act="start" data-id="${r.id}">Treinar</button>
         </div></div>`;
     });
-    h += `<div class="stack"><button class="btn wide" data-act="startEmpty">Treino livre (sem rotina)</button></div>`;
   }
 
   if(last.length){
@@ -602,12 +653,121 @@ function sessaoAberta(ei, en){
   return dobrado.has(ei) ? !padrao : padrao;
 }
 
-function vSession(){
-  const a=S.active;
-  let h="";
-  if(!S.sessions.length){
-    h += `<p class="muted" style="font-size:12.5px;margin:2px 0 10px">Toque no número da série para marcá-la como aquecimento.</p>`;
+function cardExercicio(en, ei, foco, cabecalho){
+  const ex=exById(en.exId);
+  const prev = lastSetsFor(en.exId);
+  const rec = bestFor(en.exId, null);
+  let prIdx=-1, prBest=0;
+  if(rec.w>0) en.sets.forEach((st,si) => { if(!st.done || st.warm) return;
+    const W=num(st.w), R=num(st.r), E=e1rm(W,R);
+    if(W>0 && (W>rec.w+0.001 || E>rec.e+0.001) && E>prBest){ prBest=E; prIdx=si; } });
+
+  let h = `<p class="muted" style="font-size:12.5px;margin-top:2px">${esc(ex.muscle)}${
+    prev ? (foco ? "" : " · última: "+prev.map(x=>par(x.w,x.r)).join(", ")) : " · primeira vez"}</p>`;
+
+  if(foco){
+    if(rec.w>0 || rec.e>0){
+      h += `<div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">
+        <span class="tag pr">recorde ${rec.w>0?fmt(rec.w)+" kg":fmt(rec.e)+" kg est."}</span>
+        <button class="chip" data-act="verProg" data-id="${en.exId}">Ver progressão</button></div>`;
+    } else {
+      h += `<div class="row" style="margin-top:8px"><button class="chip" data-act="verProg" data-id="${en.exId}">Ver progressão</button></div>`;
+    }
+    h += `<input class="field" style="margin-top:10px;font-size:14px" data-note="${ei}" data-k="n-${ei}"
+      value="${esc(en.note||"")}" placeholder="Anotação: pegada, banco, número da máquina...">`;
+  } else if(en.note){
+    h += `<p class="muted" style="font-size:12.5px;margin-top:4px;font-style:italic">${esc(en.note)}</p>`;
   }
+
+  const comHist = foco && !!prev;
+  h += (foco || cabecalho)
+    ? `<div class="setrow head ${comHist?"comhist":""}" style="margin-top:10px">
+        <span>#</span><span>reps</span><span>kg</span>${comHist?"<span>última</span>":""}<span></span></div>`
+    : `<div style="height:8px"></div>`;
+
+  en.sets.forEach((st,si) => {
+    const p = prev ? prev[Math.min(si, prev.length-1)] : null;
+    h += `<div class="setrow ${comHist?"comhist":""} ${st.done?"ok":""}">
+      <button class="setno" data-act="warm" data-i="${ei}" data-j="${si}" title="Aquecimento"
+        style="border:0;background:none;font:inherit;cursor:pointer;${st.warm?"color:var(--amber);font-weight:650":""}">${st.warm?"A":si+1}</button>
+      <input class="num" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="${st.sug?esc(st.sug.r):(en.reps?esc(en.reps):"0")}" aria-label="Repetições, série ${si+1}">
+      <input class="num" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="${st.sug?esc(st.sug.w):"0"}" aria-label="Carga em kg, série ${si+1}${st.sug?", sugestão "+esc(st.sug.w):""}">
+      ${comHist?`<span class="hist">${p?par(p.w,p.r):"—"}</span>`:""}
+      <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Concluir série ${si+1} de ${esc(ex.name)}">✓</button>
+    </div>${si===prIdx?`<div style="margin:-2px 0 4px 34px"><span class="tag pr">recorde pessoal</span></div>`:""}`;
+  });
+  return h;
+}
+
+/* três séries em branco, já com a sugestão do último treino daquele exercício */
+function novasSeries(exId){
+  const prev = lastSetsFor(exId);
+  return [0,1,2].map(i => {
+    const p = prev ? prev[Math.min(i, prev.length-1)] : null;
+    return {w:"", r:"", done:false, sug: p ? {w:fmt(num(p.w)), r:String(num(p.r))} : null};
+  });
+}
+
+function primeiroIncompleto(){
+  if(!S.active) return 0;
+  const i = S.active.entries.findIndex(en => en.sets.some(s=>!s.done));
+  return i<0 ? 0 : i;
+}
+
+function vSessionFoco(){
+  const a=S.active;
+  if(!a.entries.length) return semExercicios();
+  if(focoIdx>=a.entries.length) focoIdx=Math.max(0,a.entries.length-1);
+  const en=a.entries[focoIdx], ex=exById(en.exId);
+  const total=en.sets.length, done=en.sets.filter(s=>s.done).length;
+  const cls = done===0 ? "" : (done===total ? "done" : "doing");
+
+  let h = `<div class="dots">${a.entries.map((e,i)=>{
+      const d=e.sets.filter(s=>s.done).length, t=e.sets.length;
+      const est = ((t>0 && d===t) ? "done " : "") + (i===focoIdx ? "now" : "");
+      return `<button class="dot ${est}" data-act="irPara" data-i="${i}" aria-label="Exercício ${i+1}"></button>`;
+    }).join("")}</div>
+    <div class="between" style="margin-bottom:8px">
+      <button class="btn sm" data-act="foco" data-d="-1" ${focoIdx===0?"disabled":""} aria-label="Exercício anterior">◀</button>
+      <span class="muted" style="font-size:13px">${focoIdx+1} de ${a.entries.length}</span>
+      <div class="row" style="gap:6px">
+        <button class="btn sm" data-act="modoLista">Lista</button>
+        <button class="btn sm ${(done===total && total>0 && focoIdx<a.entries.length-1)?"primary":""}" data-act="foco" data-d="1" ${focoIdx===a.entries.length-1?"disabled":""} aria-label="Próximo exercício">▶</button>
+      </div>
+    </div>
+    <div class="ex ${cls}" id="foco">
+      <div class="between" style="align-items:center">
+        <h3 class="grow ellip">${esc(ex.name)}</h3>
+        <button class="btn ghost sm" data-act="exMenu" data-i="${focoIdx}" aria-label="Opções"
+          style="font-size:18px;line-height:1;padding:4px 8px">⋯</button>
+      </div>
+      ${cardExercicio(en, focoIdx, true, true)}
+    </div>
+    <div class="stack"><button class="btn wide" data-act="pickWorkout">+ Adicionar exercício</button></div>
+    <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">${confirmKey==="cancel"?"Confirmar descarte":"Descartar treino"}</button></div>`;
+  return h;
+}
+
+function sessaoAberta(ei, en){
+  const total=en.sets.length, done=en.sets.filter(s=>s.done).length;
+  // pronto = fechado por padrão, menos o exercício em que se acabou de mexer
+  const padrao = !(total>0 && done===total) || ei===ultimoMexido;
+  return dobrado.has(ei) ? !padrao : padrao;
+}
+
+function semExercicios(){
+  return `<div class="empty">Treino sem exercícios ainda.<br>Adicione o primeiro para começar a registrar.</div>
+    <div class="stack"><button class="btn wide primary" data-act="pickWorkout">+ Adicionar exercício</button></div>
+    <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">${confirmKey==="cancel"?"Confirmar descarte":"Descartar treino"}</button></div>`;
+}
+
+function vSession(){
+  if(!S.active.entries.length) return semExercicios();
+  if(modo()==="foco") return vSessionFoco();
+  const a=S.active;
+  let h = `<div class="between stack" style="margin-bottom:4px">
+      <span class="muted" style="font-size:13px">${a.entries.length} exercícios</span>
+      <button class="btn sm" data-act="modoFoco">Modo foco</button></div>`;
 
   let primeiroAberto = true;
   a.entries.forEach((en,ei) => {
@@ -625,36 +785,12 @@ function vSession(){
         <div class="grow">
           <h3 class="ellip">${esc(ex.name)}</h3>
           ${aberto ? "" : `<p class="muted tnum" style="font-size:12.5px">${
-              feitas.length ? feitas.map(s=>fmt(num(s.w))+"×"+num(s.r)).join("  ") : (soAquece ? "só aquecimento" : "sem séries")}</p>`}
+              feitas.length ? feitas.map(s=>par(s.w,s.r)).join("  ") : (soAquece ? "só aquecimento" : "sem séries")}</p>`}
         </div>
         <button class="btn ghost sm" data-act="exMenu" data-i="${ei}" aria-label="Opções de ${esc(ex.name)}"
           style="font-size:18px;line-height:1;padding:4px 8px">⋯</button>
       </div>`;
-
-    if(aberto){
-      const prev = lastSetsFor(en.exId);
-      const rec = bestFor(en.exId, null);
-      let prIdx=-1, prBest=0;
-      if(rec.w>0) en.sets.forEach((st,si) => { if(!st.done || st.warm) return;
-        const W=num(st.w), R=num(st.r), E=e1rm(W,R);
-        if(W>0 && (W>rec.w+0.001 || E>rec.e+0.001) && E>prBest){ prBest=E; prIdx=si; } });
-
-      h += `<p class="muted" style="font-size:12.5px;margin-top:2px">${esc(ex.muscle)}${
-        prev ? " · última: "+prev.map(s=>fmt(num(s.w))+"×"+num(s.r)).join(", ") : " · primeira vez"}</p>`;
-      if(en.note) h += `<p class="muted" style="font-size:12.5px;margin-top:4px;font-style:italic">${esc(en.note)}</p>`;
-      h += primeiroAberto ? `<div class="setrow head" style="margin-top:8px"><span>#</span><span>kg</span><span>reps</span><span></span></div>`
-                          : `<div style="height:8px"></div>`;
-      primeiroAberto = false;
-      en.sets.forEach((st,si) => {
-        h += `<div class="setrow ${st.done?"ok":""}">
-          <button class="setno" data-act="warm" data-i="${ei}" data-j="${si}" title="Aquecimento"
-            style="border:0;background:none;font:inherit;cursor:pointer;${st.warm?"color:var(--amber);font-weight:650":""}">${st.warm?"A":si+1}</button>
-          <input class="num ${st.sug&&!st.done?"sug":""}" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="0" aria-label="Carga em kg, série ${si+1}">
-          <input class="num ${st.sug&&!st.done?"sug":""}" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="${en.reps?esc(en.reps):"0"}" aria-label="Repetições, série ${si+1}${en.reps?", alvo "+esc(en.reps):""}">
-          <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Concluir série ${si+1} de ${esc(ex.name)}">✓</button>
-        </div>${si===prIdx?`<div style="margin:-2px 0 4px 34px"><span class="tag pr">recorde pessoal</span></div>`:""}`;
-      });
-    }
+    if(aberto){ h += cardExercicio(en, ei, false, primeiroAberto); primeiroAberto = false; }
     h += `</div>`;
   });
 
@@ -688,7 +824,8 @@ function vRotinas(){
         <button class="btn sm danger" data-act="delRoutine" data-id="${r.id}" style="margin-left:auto">${confirmKey==="del:"+r.id?"Confirmar":"Apagar"}</button>
       </div></div>`;
   });
-  h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Nova rotina</button></div>`;
+  h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Nova rotina</button></div>
+        <div class="stack" style="text-align:center"><button class="btn ghost" data-act="startEmpty">Treinar sem rotina</button></div>`;
   return h;
 }
 
@@ -733,7 +870,7 @@ function importFromText(txt){
     const d=(j && j.data) ? j.data : j;
     if(!d || !Array.isArray(d.sessions) || !Array.isArray(d.routines)) throw new Error("formato");
     S=Object.assign({custom:[],routines:[],sessions:[],active:null,meta:{lastBackup:0,lastBackupCount:0}}, d);
-    flush(); sheetText=null; render();
+    migrar(); flush(); sheetText=null; render();
     toast("Backup restaurado: "+S.sessions.length+" treinos.");
     return true;
   }catch(e){ toast("Não reconheci esse conteúdo como um backup do app."); return false; }
@@ -784,8 +921,16 @@ function dataCard(){
   </div>`;
 }
 
+function vConfig(){
+  return temaCard() + dataCard() +
+    `<div class="card stack"><h3>Sobre</h3>
+      <p class="muted" style="font-size:13px;margin-top:4px">Seus treinos ficam apenas neste aparelho. Não há conta, servidor nem sincronização — por isso o backup é o que garante os dados a longo prazo.</p>
+      <p class="muted" style="font-size:13px;margin-top:8px">${S.sessions.length} treinos, ${S.routines.length} rotinas, ${S.custom.length} exercícios criados por você.</p>
+    </div>`;
+}
+
 function vHistorico(){
-  if(!S.sessions.length) return `<div class="empty">Nenhum treino registrado ainda.<br>Ao concluir um treino ele aparece aqui.</div>` + temaCard() + dataCard();
+  if(!S.sessions.length) return `<div class="empty">Nenhum treino registrado ainda.<br>Ao concluir um treino ele aparece aqui.</div>`;
   let h="";
   S.sessions.slice().reverse().forEach(s => {
     const open = openId===s.id;
@@ -802,7 +947,7 @@ function vHistorico(){
         if(!sets.length) return;
         h += `<div class="between" style="padding:5px 0">
           <span class="ellip grow">${esc(exById(en.exId).name)}</span>
-          <span class="muted tnum" style="font-size:13.5px">${sets.map(x=>fmt(num(x.w))+"×"+num(x.r)).join("  ")}</span></div>`;
+          <span class="muted tnum" style="font-size:13.5px">${sets.map(x=>par(x.w,x.r)).join("  ")}</span></div>`;
       });
       h += `<div class="row" style="margin-top:10px">
         <button class="btn sm" data-act="repeat" data-id="${s.id}">Repetir treino</button>
@@ -810,7 +955,7 @@ function vHistorico(){
     }
     h += `</div>`;
   });
-  return h + temaCard() + dataCard();
+  return h;
 }
 
 function vProgresso(){
@@ -853,7 +998,7 @@ function vProgresso(){
   hist.slice().reverse().forEach(p => {
     h += `<div class="card stack" style="padding:11px 14px"><div class="between">
       <span>${dateLabel(p.t)}</span>
-      <span class="tnum muted" style="font-size:14px">melhor série ${p.bset.w>0?fmt(p.bset.w)+"×"+p.bset.r:p.bset.r+" reps"}${p.vol>0?" · "+ton(p.vol):""}</span></div></div>`;
+      <span class="tnum muted" style="font-size:14px">melhor série ${parKg(p.bset.w,p.bset.r)}${p.vol>0?" · "+ton(p.vol):""}</span></div></div>`;
   });
   h += `<div class="stack"><p class="muted" style="font-size:12.5px">${comCarga?"Volume total acumulado neste exercício: "+ton(vol)+".":"Total de repetições acumuladas: "+repsTot+"."}</p></div>`;
   return h;
@@ -946,6 +1091,29 @@ function renderFloat(){
       <button data-act="restSkip">pular</button></div>`);
   }
   if(picker) renderPicker();
+  if(progSheet){
+    const ex=exById(progSheet), hist=historyFor(progSheet);
+    const comCarga = hist.some(p=>p.bw>0);
+    const val = p => comCarga ? p.be : p.br;
+    let corpo;
+    if(!hist.length){
+      corpo = `<div class="empty">Sem histórico ainda.<br>Depois do primeiro treino a curva aparece aqui.</div>`;
+    } else {
+      const melhor = comCarga ? fmt(Math.max(...hist.map(p=>p.bw)))+" kg" : Math.max(...hist.map(p=>p.br))+" reps";
+      const delta = hist.length>1 ? val(hist[hist.length-1]) - val(hist[0]) : 0;
+      corpo = `<div class="between"><span class="muted" style="font-size:13px">Melhor: <strong>${melhor}</strong></span>
+          <span class="muted tnum" style="font-size:13px">${delta>=0?"+":""}${fmt(delta)} ${comCarga?"kg":"reps"} desde a 1ª sessão</span></div>
+        ${chart(hist, val)}
+        <div style="margin-top:10px">${hist.slice().reverse().slice(0,6).map(pt=>`
+          <div class="between" style="padding:6px 0;border-bottom:1px solid var(--line)">
+            <span>${dateLabel(pt.t)}</span>
+            <span class="tnum muted" style="font-size:13.5px">${parKg(pt.bset.w,pt.bset.r)}${pt.vol>0?" · "+ton(pt.vol):""}</span>
+          </div>`).join("")}</div>`;
+    }
+    host.insertAdjacentHTML("beforeend", `<div class="overlay" data-act="fecharProg"><div class="sheet" data-stop="1">
+      <header><h2 class="ellip">${esc(ex.name)}</h2><button class="btn sm" data-act="fecharProg">Fechar</button></header>
+      <div class="body">${corpo}</div></div></div>`);
+  }
   if(exMenu!==null && S.active && S.active.entries[exMenu]){
     const ei=exMenu, en=S.active.entries[ei], ex=exById(en.exId);
     const descansos=[0,60,90,120,150,180];
@@ -1019,7 +1187,7 @@ window.addEventListener("offline", renderOffline);
 function renderNav(){
   const items=[["treinar","Treinar"],["rotinas","Rotinas"],["historico","Histórico"],["progresso","Progresso"]];
   $("#nav").innerHTML = items.map(([k,l]) =>
-    `<button class="${view===k||(view==="edit"&&k==="rotinas")?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}">${l}</button>`).join("");
+    `<button class="${view===k||(view==="edit"&&k==="rotinas")||(view==="config"&&k===voltarPara)?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}">${l}</button>`).join("");
 }
 
 function render(){
@@ -1027,7 +1195,8 @@ function render(){
   const fk = act && act.dataset ? act.dataset.k : null;
   renderTop();
   const body = view==="treinar" ? vTreinar() : view==="rotinas" ? vRotinas() :
-               view==="edit" ? vEdit() : view==="historico" ? vHistorico() : vProgresso();
+               view==="edit" ? vEdit() : view==="historico" ? vHistorico() :
+               view==="config" ? vConfig() : vProgresso();
   $("#view").innerHTML = body;
   renderNav(); renderFloat(); renderOffline();
   if(fk){ const el=document.querySelector(`[data-k="${fk}"]`);
@@ -1041,12 +1210,12 @@ function newSession(routine){
     const sets=[];
     for(let i=0;i<it.sets;i++){
       const p = prev ? prev[Math.min(i, prev.length-1)] : null;
-      sets.push({w: p? String(p.w):"", r: p? String(p.r):"", done:false, sug: !!p});
+      sets.push({w:"", r:"", done:false, sug: p ? {w:fmt(num(p.w)), r:String(num(p.r))} : null});
     }
     return {exId:it.exId, rest:it.rest===0?0:(it.rest||90), reps:it.reps||"", note:"", sets};
   });
   S.active = {routineId: routine?routine.id:null, name: routine?routine.name:"Treino livre", start:Date.now(), entries};
-  view="treinar"; wake(true); save(); render();
+  view="treinar"; naSessao=true; focoIdx=0; wake(true); save(); render();
 }
 
 function finish(){
@@ -1063,7 +1232,7 @@ function finish(){
     else if(be>before.e+0.001) prs.push(exById(en.exId).name+" (1RM est.)");
   });
   S.sessions.push({id:uid(), routineId:a.routineId, name:a.name, start:a.start, end:Date.now(), entries});
-  S.active=null; restEnd=0; noteOpen=null; exMenu=null; dobrado.clear(); ultimoMexido=null; view="historico"; wake(false); save(); render();
+  S.active=null; restEnd=0; exMenu=null; progSheet=null; dobrado.clear(); ultimoMexido=null; naSessao=false; focoIdx=0; view="historico"; wake(false); save(); render();
   toast(prs.length ? "Treino salvo · "+prs.length+" recorde"+(prs.length>1?"s":"")+": "+prs.slice(0,2).join(", ") : "Treino salvo.");
 }
 
@@ -1089,6 +1258,8 @@ document.addEventListener("click", ev => {
 
   switch(a){
     case "nav": if(view==="edit") syncRoutineName(); view=t.dataset.v; confirmKey=null; render(); break;
+    case "abrirConfig": voltarPara = view; view="config"; confirmKey=null; render(); window.scrollTo(0,0); break;
+    case "voltarConfig": view = voltarPara || "treinar"; render(); break;
     case "tpl": applyTemplate(t.dataset.k); break;
     case "newRoutine": { const r={id:uid(),name:"Nova rotina",items:[]}; S.routines.push(r); editingId=r.id; view="edit"; save(); render(); break; }
     case "editRoutine": editingId=id; view="edit"; render(); break;
@@ -1107,7 +1278,7 @@ document.addEventListener("click", ev => {
     case "choose":
       if(picker.mode==="swap"){ S.active.entries[picker.i].exId=id; }
       else if(picker.mode==="routine"){ const r=S.routines.find(x=>x.id===editingId); r.items.push({exId:id,sets:3,reps:"8-12",rest:90}); }
-      else { S.active.entries.push({exId:id, rest:90, sets:[{w:"",r:"",done:false},{w:"",r:"",done:false},{w:"",r:"",done:false}]}); }
+      else { S.active.entries.push({exId:id, rest:90, reps:"", note:"", sets:novasSeries(id)}); focoIdx=S.active.entries.length-1; }
       picker=null; save(); render(); break;
     case "newEx": { const nome=(picker.q||"").trim(); if(!nome) break;
       picker.novo = nome.charAt(0).toUpperCase()+nome.slice(1); renderFloat(); break; }
@@ -1117,41 +1288,51 @@ document.addEventListener("click", ev => {
       S.custom.push(ex);
       if(picker.mode==="swap"){ S.active.entries[picker.i].exId=ex.id; }
       else if(picker.mode==="routine"){ const r=S.routines.find(x=>x.id===editingId); r.items.push({exId:ex.id,sets:3,reps:"8-12",rest:90}); }
-      else { S.active.entries.push({exId:ex.id, rest:90, reps:"", note:"", sets:[{w:"",r:"",done:false},{w:"",r:"",done:false},{w:"",r:"",done:false}]}); }
+      else { S.active.entries.push({exId:ex.id, rest:90, reps:"", note:"", sets:novasSeries(ex.id)}); focoIdx=S.active.entries.length-1; }
       picker=null; save(); render(); toast("Exercício criado em "+t.dataset.m+"."); break; }
     case "start": { const r=S.routines.find(x=>x.id===id); if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break;} newSession(r); break; }
-    case "startEmpty": if(S.active){ toast("Já existe um treino em andamento."); } else newSession(null); render(); break;
+    case "startEmpty": if(S.active){ toast("Já existe um treino em andamento."); view="treinar"; } else newSession(null); render(); break;
     case "repeat": { const s=S.sessions.find(x=>x.id===id);
       if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break; }
       newSession({id:s.routineId,name:s.name,items:s.entries.map(en=>({exId:en.exId,sets:en.sets.length,reps:"",rest:90}))}); break; }
     case "check": { const st=S.active.entries[i].sets[j];
+      if(!st.done && st.sug){                       // campo em branco assume a sugestão
+        if(st.w==="") st.w=st.sug.w;
+        if(st.r==="") st.r=st.sug.r;
+      }
       if(!st.done && (num(st.w)===0 && num(st.r)===0)){ toast("Preencha carga e repetições."); break; }
-      st.done=!st.done; st.sug=false; ultimoMexido=i; dobrado.delete(i);
+      st.done=!st.done; ultimoMexido=i; dobrado.delete(i);
       if(st.done && (S.active.entries[i].rest||0)>0) startRest(S.active.entries[i].rest);
       save(); render(); break; }
-    case "addSet": { const en=S.active.entries[i]; const l=en.sets[en.sets.length-1]||{w:"",r:""};
-      en.sets.push({w:l.w,r:l.r,done:false,sug:true}); save(); render(); break; }
+    case "addSet": { const en=S.active.entries[i]; const l=en.sets[en.sets.length-1];
+      const base = l ? (l.w!=="" || l.r!=="" ? {w:String(l.w),r:String(l.r)} : l.sug) : null;
+      en.sets.push({w:"",r:"",done:false,sug: base && (base.w||base.r) ? base : null}); save(); render(); break; }
     case "delSet": { const en=S.active.entries[i]; if(en.sets.length>1) en.sets.pop(); save(); render(); break; }
-    case "rmEx": S.active.entries.splice(i,1); exMenu=null; dobrado.clear(); ultimoMexido=null; save(); render(); break;
+    case "rmEx": S.active.entries.splice(i,1); exMenu=null; dobrado.clear(); ultimoMexido=null; focoIdx=Math.min(focoIdx, Math.max(0,S.active.entries.length-1)); save(); render(); break;
+    case "foco": { const d=+t.dataset.d;
+      focoIdx=Math.min(S.active.entries.length-1, Math.max(0, focoIdx+d)); render(); window.scrollTo(0,0); break; }
+    case "irPara": focoIdx=i; render(); window.scrollTo(0,0); break;
+    case "modoLista": S.meta=Object.assign({},S.meta||{},{modo:"lista"}); save(); render(); break;
+    case "modoFoco": S.meta=Object.assign({},S.meta||{},{modo:"foco"}); focoIdx=primeiroIncompleto(); save(); render(); break;
+    case "verProg": progSheet=id; renderFloat(); break;
+    case "fecharProg": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break; progSheet=null; renderFloat(); break;
     case "exMenu": exMenu=i; renderFloat(); break;
     case "moverEx": { const d=+t.dataset.d, alvo=i+d, es=S.active.entries;
       if(alvo<0 || alvo>=es.length) break;
       const [mv]=es.splice(i,1); es.splice(alvo,0,mv);
-      exMenu=alvo; dobrado.clear(); ultimoMexido=null; save(); render(); break; }
+      exMenu=alvo; if(focoIdx===i) focoIdx=alvo; dobrado.clear(); ultimoMexido=null; save(); render(); break; }
     case "fecharMenu": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break; exMenu=null; render(); break;
     case "dobrar": if(ultimoMexido!==null && ultimoMexido!==i) ultimoMexido=null;
       if(dobrado.has(i)) dobrado.delete(i); else dobrado.add(i); render(); break;
     case "setRest": S.active.entries[i].rest=+t.dataset.d; save(); render(); break;
     case "swapEx": exMenu=null; picker={mode:"swap", i:i, q:"", muscle:null}; renderFloat(); break;
     case "warm": { const st=S.active.entries[i].sets[j]; st.warm=!st.warm; save(); render(); break; }
-    case "restCycle": { const opts=[60,90,120,150,180,0]; const en=S.active.entries[i];
-      en.rest = opts[(opts.indexOf(en.rest)+1+opts.length)%opts.length] ?? 90; save(); render(); break; }
     case "dupRoutine": { const r=S.routines.find(x=>x.id===id);
       S.routines.push({id:uid(), name:r.name+" (cópia)", items:r.items.map(it=>Object.assign({},it))});
       save(); render(); toast("Rotina duplicada."); break; }
     case "finish": finish(); break;
     case "cancelWorkout":
-      if(confirmKey==="cancel"){ S.active=null; restEnd=0; confirmKey=null; wake(false); save(); }
+      if(confirmKey==="cancel"){ S.active=null; restEnd=0; confirmKey=null; naSessao=false; wake(false); save(); }
       else confirmKey="cancel";
       render(); break;
     case "openSession": openId = openId===id ? null : id; render(); break;
@@ -1175,6 +1356,7 @@ document.addEventListener("click", ev => {
       } else { sheetText={mode:"copy",text:txt}; renderFloat(); }
       break; }
     case "copiedOk": marcarBackup(); sheetText=null; render(); toast("Backup registrado. Guarde esse texto em lugar seguro."); break;
+    case "retomar": naSessao=true; view="treinar"; focoIdx=primeiroIncompleto(); render(); break;
     case "tema": { S.meta=Object.assign({lastBackup:0,lastBackupCount:0}, S.meta||{}, {tema:t.dataset.t});
       aplicarTema(); save(); render(); break; }
     case "pasteOpen": sheetText={mode:"paste",text:""}; renderFloat(); break;
@@ -1192,7 +1374,7 @@ document.addEventListener("input", ev => {
   if(el.dataset.f && el.dataset.e!==undefined && el.dataset.s!==undefined && S.active){
     if(+el.dataset.e !== ultimoMexido) ultimoMexido = +el.dataset.e;
     const st=S.active.entries[+el.dataset.e].sets[+el.dataset.s];
-    st[el.dataset.f]=el.value; st.sug=false; el.classList.remove("sug"); save(); return;
+    st[el.dataset.f]=el.value; save(); return;
   }
   if(el.dataset.note!==undefined && S.active){
     S.active.entries[+el.dataset.note].note = el.value; save(); return;
@@ -1219,8 +1401,28 @@ document.addEventListener("keydown", ev => {
   if((ev.key==="Enter"||ev.key===" ") && ev.target.getAttribute && ev.target.getAttribute("role")==="button"){
     ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); return;
   }
-  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null)){ picker=null; sheetText=null; exMenu=null; renderFloat(); }
+  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet)){ picker=null; sheetText=null; exMenu=null; progSheet=null; renderFloat(); }
+  if(S.active && naSessao && modo()==="foco" && !picker && !exMenu && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
+    if(ev.key==="ArrowLeft" && focoIdx>0){ focoIdx--; render(); }
+    if(ev.key==="ArrowRight" && focoIdx<S.active.entries.length-1){ focoIdx++; render(); }
+  }
 });
+
+let toqueX=null, toqueY=null;
+document.addEventListener("touchstart", ev => {
+  if(!(S.active && naSessao && modo()==="foco") || picker || exMenu!==null || progSheet) { toqueX=null; return; }
+  const t0=ev.changedTouches[0]; toqueX=t0.clientX; toqueY=t0.clientY;
+}, {passive:true});
+document.addEventListener("touchend", ev => {
+  if(toqueX===null || !S.active) return;
+  const t0=ev.changedTouches[0], dx=t0.clientX-toqueX, dy=t0.clientY-toqueY;
+  toqueX=null;
+  if(Math.abs(dx)<70 || Math.abs(dy)>50) return;             // só gesto claramente horizontal
+  if(ev.target.closest && ev.target.closest("input,textarea,select")) return;
+  const novo = focoIdx + (dx<0 ? 1 : -1);
+  if(novo<0 || novo>=S.active.entries.length) return;
+  focoIdx=novo; render(); window.scrollTo(0,0);
+}, {passive:true});
 
 window.addEventListener("scroll", () => {
   const t=$("#top"); if(t) t.classList.toggle("scrolled", window.scrollY>4);
