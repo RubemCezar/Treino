@@ -101,6 +101,9 @@
                color:#fff;border-radius:8px;padding:6px 10px;cursor:pointer}
   /* modal */
   .overlay{position:fixed;inset:0;background:rgba(17,20,24,.4);z-index:20;display:flex;align-items:flex-end;justify-content:center}
+  .overlay.centro{align-items:center;padding:20px}
+  .dialogo{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;width:100%;max-width:380px;
+           box-shadow:0 10px 40px rgba(0,0,0,.28)}
   .sheet{background:var(--surface);width:100%;max-width:640px;max-height:86vh;border-radius:14px 14px 0 0;
          display:flex;flex-direction:column;overflow:hidden}
   .sheet header{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
@@ -371,7 +374,7 @@ let calMes = null, calDia = null;   // mês exibido e dia selecionado no calend�
 const modo = () => (S.meta && S.meta.modo) || "foco";
 let swEstado = null;   // estado do modo offline, quando publicado
 let progressEx = null;
-let confirmKey = null, openId = null;
+let openId = null;
 let toastMsg = null, toastT = null;
 let restEnd = 0, restTotal = 0;
 let saveT = null;
@@ -543,6 +546,12 @@ function weekByMuscle(){
   return Object.entries(m).sort((a,b)=>b[1]-a[1]);
 }
 
+let dialogo = null;   // {titulo, texto, rotulo, fn}
+function pedirConfirmacao(titulo, texto, rotulo, fn){
+  dialogo = {titulo, texto, rotulo, fn};
+  renderFloat();
+}
+
 function toast(msg){
   toastMsg=msg; renderFloat();
   clearTimeout(toastT); toastT=setTimeout(()=>{toastMsg=null;renderFloat();},2600);
@@ -612,7 +621,7 @@ function vTreinar(){
           <p class="muted tnum" style="font-size:13px">Em andamento · ${dur(Date.now()-S.active.start)} · ${feitas} série${feitas===1?"":"s"}</p></div>
         <button class="btn primary" data-act="retomar">Continuar</button>
       </div>
-      <div style="text-align:center;margin-top:8px"><button class="btn ghost danger sm" data-act="cancelWorkout">${confirmKey==="cancel"?"Confirmar descarte":"Descartar treino"}</button></div>
+      <div style="text-align:center;margin-top:8px"><button class="btn ghost danger sm" data-act="cancelWorkout">Descartar treino</button></div>
     </div>`;
   }
   const desde = S.sessions.length - ((S.meta&&S.meta.lastBackupCount)||0);
@@ -777,7 +786,7 @@ function vSessionFoco(){
       ${cardExercicio(en, focoIdx, true, true)}
     </div>
     <div class="stack"><button class="btn wide" data-act="pickWorkout">+ Adicionar exercício</button></div>
-    <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">${confirmKey==="cancel"?"Confirmar descarte":"Descartar treino"}</button></div>`;
+    <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">Descartar treino</button></div>`;
   return h;
 }
 
@@ -798,7 +807,7 @@ function sessaoAberta(ei, en){
 function semExercicios(){
   return `<div class="empty">Treino sem exercícios ainda.<br>Adicione o primeiro para começar a registrar.</div>
     <div class="stack"><button class="btn wide primary" data-act="pickWorkout">+ Adicionar exercício</button></div>
-    <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">${confirmKey==="cancel"?"Confirmar descarte":"Descartar treino"}</button></div>`;
+    <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">Descartar treino</button></div>`;
 }
 
 function vSession(){
@@ -836,7 +845,7 @@ function vSession(){
   });
 
   h += `<div class="stack"><button class="btn wide" data-act="pickWorkout">+ Adicionar exercício</button></div>
-        <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">${confirmKey==="cancel"?"Confirmar descarte":"Descartar treino"}</button></div>`;
+        <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">Descartar treino</button></div>`;
   return h;
 }
 
@@ -862,7 +871,7 @@ function vRotinas(){
         <button class="btn sm primary" data-act="start" data-id="${r.id}">Treinar</button>
         <button class="btn sm" data-act="editRoutine" data-id="${r.id}">Editar</button>
         <button class="btn sm" data-act="dupRoutine" data-id="${r.id}">Duplicar</button>
-        <button class="btn sm danger" data-act="delRoutine" data-id="${r.id}" style="margin-left:auto">${confirmKey==="del:"+r.id?"Confirmar":"Apagar"}</button>
+        <button class="btn sm danger" data-act="delRoutine" data-id="${r.id}" style="margin-left:auto">Apagar</button>
       </div></div>`;
   });
   h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Nova rotina</button></div>
@@ -986,7 +995,7 @@ function cardSessao(se, aberto){
     ${listaExercicios(se, aberto)}
     <div class="row" style="margin-top:8px">
       <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir treino</button>
-      <button class="btn sm danger" data-act="delSession" data-id="${se.id}" style="margin-left:auto">${confirmKey==="dels:"+se.id?"Confirmar":"Apagar"}</button>
+      <button class="btn sm danger" data-act="delSession" data-id="${se.id}" style="margin-left:auto">Apagar</button>
     </div>
   </div>`;
 }
@@ -1267,6 +1276,18 @@ function renderFloat(){
     const ta=document.getElementById("bkTa");
     if(ta && copiar){ ta.focus(); ta.select(); }
   }
+  if(dialogo){
+    host.insertAdjacentHTML("beforeend", `<div class="overlay centro" data-act="dlgNao">
+      <div class="dialogo" data-stop="1" role="alertdialog" aria-modal="true" aria-label="${esc(dialogo.titulo)}">
+        <h3>${esc(dialogo.titulo)}</h3>
+        <p class="muted" style="font-size:14px;margin-top:8px">${esc(dialogo.texto)}</p>
+        <div class="row" style="gap:8px;margin-top:18px">
+          <button class="btn grow" data-act="dlgNao">Cancelar</button>
+          <button class="btn grow danger" data-act="dlgSim" style="border-color:var(--red)">${esc(dialogo.rotulo)}</button>
+        </div>
+      </div></div>`);
+    const b=host.querySelector('[data-act="dlgSim"]'); if(b) b.focus();
+  }
   if(toastMsg) host.insertAdjacentHTML("beforeend", `<div class="toast" role="status" aria-live="polite">${esc(toastMsg)}</div>`);
 }
 
@@ -1354,26 +1375,28 @@ document.addEventListener("click", ev => {
   if(!t) return;
   const a=t.dataset.act;
   const id=t.dataset.id, i=+t.dataset.i, j=+t.dataset.j;
-  const keep = a==="delRoutine"||a==="delSession"||a==="cancelWorkout";
-  if(!keep && confirmKey) confirmKey=null;
 
   switch(a){
-    case "nav": if(view==="edit") syncRoutineName(); view=t.dataset.v; confirmKey=null; render(); break;
-    case "abrirCal": voltarPara = view; view="calendario"; calMes=inicioMes(Date.now()); calDia=null;
-      confirmKey=null; render(); window.scrollTo(0,0); break;
+    case "nav": if(view==="edit") syncRoutineName(); view=t.dataset.v; render(); break;
+    case "dlgSim": { const fn=dialogo && dialogo.fn; dialogo=null; renderFloat(); if(fn) fn(); break; }
+    case "dlgNao": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
+      dialogo=null; renderFloat(); break;
+    case "abrirCal": voltarPara = view; view="calendario"; calMes=inicioMes(Date.now()); calDia=null; render(); window.scrollTo(0,0); break;
     case "mes": { const b=new Date(calMes||inicioMes(Date.now()));
       calMes=new Date(b.getFullYear(), b.getMonth()+(+t.dataset.d), 1).getTime(); calDia=null; render(); break; }
     case "dia": calDia = calDia===+t.dataset.d ? null : +t.dataset.d; render(); break;
-    case "abrirConfig": voltarPara = view; view="config"; confirmKey=null; render(); window.scrollTo(0,0); break;
+    case "abrirConfig": voltarPara = view; view="config"; render(); window.scrollTo(0,0); break;
     case "voltarConfig": view = voltarPara || "treinar"; calDia=null; render(); break;
     case "tpl": applyTemplate(t.dataset.k); break;
     case "newRoutine": { const r={id:uid(),name:"Nova rotina",items:[]}; S.routines.push(r); editingId=r.id; view="edit"; save(); render(); break; }
     case "editRoutine": editingId=id; view="edit"; render(); break;
     case "saveRoutine": syncRoutineName(); view="rotinas"; save(); render(); toast("Rotina salva."); break;
-    case "delRoutine":
-      if(confirmKey==="del:"+id){ S.routines=S.routines.filter(r=>r.id!==id); confirmKey=null; save(); }
-      else confirmKey="del:"+id;
-      render(); break;
+    case "delRoutine": { const r=S.routines.find(x=>x.id===id); if(!r) break;
+      pedirConfirmacao("Apagar rotina?",
+        `“${r.name}” sai da lista. Os treinos já registrados no histórico continuam lá.`,
+        "Apagar",
+        () => { S.routines=S.routines.filter(x=>x.id!==id); save(); render(); toast("Rotina apagada."); });
+      break; }
     case "rmItem": { const r=S.routines.find(x=>x.id===editingId); syncRoutineName(); r.items.splice(i,1); save(); render(); break; }
     case "moveEx": { const r=S.routines.find(x=>x.id===editingId); syncRoutineName(); const d=+t.dataset.d;
       const [it]=r.items.splice(i,1); r.items.splice(i+d,0,it); save(); render(); break; }
@@ -1437,15 +1460,21 @@ document.addEventListener("click", ev => {
       S.routines.push({id:uid(), name:r.name+" (cópia)", items:r.items.map(it=>Object.assign({},it))});
       save(); render(); toast("Rotina duplicada."); break; }
     case "finish": finish(); break;
-    case "cancelWorkout":
-      if(confirmKey==="cancel"){ S.active=null; restEnd=0; confirmKey=null; naSessao=false; wake(false); save(); }
-      else confirmKey="cancel";
-      render(); break;
+    case "cancelWorkout": {
+      const feitas=doneSets(S.active.entries);
+      pedirConfirmacao("Descartar o treino?",
+        feitas ? `As ${feitas} séries marcadas serão perdidas e nada vai para o histórico.`
+               : "O treino em andamento será encerrado sem registrar nada.",
+        "Descartar",
+        () => { S.active=null; restEnd=0; naSessao=false; focoIdx=0; wake(false); save(); render(); toast("Treino descartado."); });
+      break; }
     case "openSession": openId = openId===id ? null : id; render(); break;
-    case "delSession":
-      if(confirmKey==="dels:"+id){ S.sessions=S.sessions.filter(s=>s.id!==id); confirmKey=null; save(); }
-      else confirmKey="dels:"+id;
-      render(); break;
+    case "delSession": { const se=S.sessions.find(x=>x.id===id); if(!se) break;
+      pedirConfirmacao("Apagar este treino?",
+        `“${se.name}” de ${dateLabel(se.end||se.start)} sai do histórico, do calendário e das estatísticas. Não dá para desfazer.`,
+        "Apagar",
+        () => { S.sessions=S.sessions.filter(x=>x.id!==id); openId=null; save(); render(); toast("Treino apagado."); });
+      break; }
     case "export": {
       const blob=new Blob([backupText()],{type:"application/json"});
       const a=document.createElement("a");
@@ -1507,7 +1536,7 @@ document.addEventListener("keydown", ev => {
   if((ev.key==="Enter"||ev.key===" ") && ev.target.getAttribute && ev.target.getAttribute("role")==="button"){
     ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); return;
   }
-  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet)){ picker=null; sheetText=null; exMenu=null; progSheet=null; renderFloat(); }
+  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; renderFloat(); }
   if(S.active && naSessao && modo()==="foco" && !picker && !exMenu && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
     if(ev.key==="ArrowLeft" && focoIdx>0){ focoIdx--; render(); }
     if(ev.key==="ArrowRight" && focoIdx<S.active.entries.length-1){ focoIdx++; render(); }
