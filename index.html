@@ -123,6 +123,18 @@
   .dot.now{box-shadow:0 0 0 2px var(--blue)}
   .setrow.comhist{grid-template-columns:24px 1fr 1fr 62px 42px}
   .hist{font-size:11.5px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .wd{font-size:11px;color:var(--muted);text-align:center;padding:2px 0}
+  .dia{aspect-ratio:1;border:1px solid transparent;background:transparent;border-radius:10px;color:var(--ink);
+       font:inherit;font-size:14px;font-variant-numeric:tabular-nums;display:flex;align-items:center;
+       justify-content:center;cursor:pointer;padding:0}
+  .dia[disabled]{color:var(--muted);opacity:.55;cursor:default}
+  .dia.treino{background:var(--blue-soft);color:var(--blue);font-weight:650}
+  .dia.hoje{border-color:var(--line)}
+  .dia.sel{outline:2px solid var(--blue);outline-offset:-1px}
+  .dia.vazio{visibility:hidden}
+  button.stat{text-align:left;font:inherit;color:var(--ink);cursor:pointer;width:100%}
+  button.stat:hover{background:var(--hover)}
   .empty{text-align:center;padding:28px 16px;color:var(--muted)}
   a{color:var(--blue)}
   :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
@@ -354,7 +366,8 @@ let ultimoMexido = null;    // não recolhe o exercício em uso sob o dedo
 let naSessao = false;       // ao abrir o app, começa sempre na página inicial
 let focoIdx = 0;            // exercício em foco na sessão
 let progSheet = null;       // exercício com o gráfico de progressão aberto
-let voltarPara = "treinar"; // de onde a tela de configurações foi aberta
+let voltarPara = "treinar"; // de onde configurações/calendário foram abertos
+let calMes = null, calDia = null;   // mês exibido e dia selecionado no calendário
 const modo = () => (S.meta && S.meta.modo) || "foco";
 let swEstado = null;   // estado do modo offline, quando publicado
 let progressEx = null;
@@ -507,6 +520,18 @@ function weekStats(){
   return {count:ss.length, vol:ss.reduce((a,s)=>a+volume(s.entries),0)};
 }
 
+function inicioMes(ts){ const d=new Date(ts); return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); }
+function sessoesDoMes(ts){
+  const d=new Date(ts), ini=new Date(d.getFullYear(),d.getMonth(),1).getTime(),
+        fim=new Date(d.getFullYear(),d.getMonth()+1,1).getTime();
+  return S.sessions.filter(x => { const t=x.end||x.start; return t>=ini && t<fim; });
+}
+function monthStats(ts){
+  const ss=sessoesDoMes(ts);
+  return {count:ss.length, vol:ss.reduce((a,x)=>a+volume(x.entries),0),
+          series:ss.reduce((a,x)=>a+doneSets(x.entries),0)};
+}
+
 function weekByMuscle(){
   const now=new Date(); const day=(now.getDay()+6)%7;
   const mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-day).getTime();
@@ -557,10 +582,10 @@ function renderTop(){
       <button class="btn primary" data-act="finish">Concluir</button></div>`;
   } else {
     const titles={treinar:"Treinar",rotinas:"Rotinas",historico:"Histórico",progresso:"Progresso",
-                  edit:"Editar rotina",config:"Configurações"};
+                  edit:"Editar rotina",config:"Configurações",calendario:"Calendário"};
     html = `<div class="toprow"><h1>${titles[view]||"Treino"}</h1><div class="row" style="gap:6px">`;
     if(view==="rotinas") html += `<button class="btn sm" data-act="newRoutine">Nova rotina</button>`;
-    if(view==="config") html += `<button class="btn sm" data-act="voltarConfig">Voltar</button>`;
+    if(view==="config" || view==="calendario") html += `<button class="btn sm" data-act="voltarConfig">Voltar</button>`;
     else if(view!=="edit") html += `<button class="btn ghost sm" data-act="abrirConfig" aria-label="Configurações"
         style="font-size:19px;line-height:1;padding:4px 8px">⚙</button>`;
     html += `</div></div>`;
@@ -575,7 +600,8 @@ function vTreinar(){
   let h = `<div class="stats stack">
       <div class="stat"><b>${w.count}</b><span>treinos na semana</span></div>
       <div class="stat"><b>${ton(w.vol)}</b><span>volume da semana</span></div>
-      <div class="stat"><b>${S.sessions.length}</b><span>treinos no total</span></div>
+      <button class="stat" data-act="abrirCal" aria-label="Ver calendário de treinos">
+        <b>${monthStats(Date.now()).count}</b><span>treinos no mês ›</span></button>
     </div>`;
 
   if(S.active){
@@ -921,6 +947,72 @@ function dataCard(){
   </div>`;
 }
 
+function vCalendario(){
+  const base=new Date(calMes || inicioMes(Date.now()));
+  const ano=base.getFullYear(), mes=base.getMonth();
+  const primeiro=new Date(ano,mes,1).getDay();
+  const dias=new Date(ano,mes+1,0).getDate();
+  const hoje=new Date(); const ehMesAtual = hoje.getFullYear()===ano && hoje.getMonth()===mes;
+
+  const porDia={};
+  sessoesDoMes(base.getTime()).forEach(se => {
+    const d=new Date(se.end||se.start).getDate(); (porDia[d]=porDia[d]||[]).push(se);
+  });
+  const st=monthStats(base.getTime());
+  const nome=base.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
+
+  let h = `<div class="between stack">
+      <button class="btn sm" data-act="mes" data-d="-1" aria-label="Mês anterior">◀</button>
+      <h2 style="text-transform:capitalize">${esc(nome)}</h2>
+      <button class="btn sm" data-act="mes" data-d="1" ${ehMesAtual?"disabled":""} aria-label="Próximo mês">▶</button>
+    </div>
+    <div class="stats stack">
+      <div class="stat"><b>${st.count}</b><span>treinos</span></div>
+      <div class="stat"><b>${st.series}</b><span>séries</span></div>
+      <div class="stat"><b>${ton(st.vol)}</b><span>volume</span></div>
+    </div>
+    <div class="card stack" style="padding:12px 10px">
+      <div class="cal">${["dom","seg","ter","qua","qui","sex","sáb"].map(d=>`<span class="wd">${d}</span>`).join("")}</div>
+      <div class="cal" style="margin-top:2px">
+        ${Array.from({length:primeiro},()=>`<span class="dia vazio"></span>`).join("")}
+        ${Array.from({length:dias},(_,i)=>{
+          const d=i+1, tem=!!porDia[d];
+          const eHoje = ehMesAtual && hoje.getDate()===d;
+          return `<button class="dia ${tem?"treino":""} ${calDia===d?"sel":""} ${eHoje?"hoje":""}"
+            data-act="dia" data-d="${d}" ${tem?"":"disabled"}
+            aria-label="${d} ${tem?"— "+porDia[d].length+" treino(s)":"— sem treino"}">${d}</button>`;
+        }).join("")}
+      </div>
+    </div>`;
+
+  const doDia = calDia ? (porDia[calDia]||[]) : [];
+  if(calDia){
+    h += `<h2 class="stack">${calDia} de ${base.toLocaleDateString("pt-BR",{month:"long"})}</h2>`;
+    if(!doDia.length){
+      h += `<div class="empty">Nenhum treino nesse dia.</div>`;
+    } else doDia.forEach(se => {
+      h += `<div class="card stack">
+        <div class="between"><div class="grow"><h3 class="ellip">${esc(se.name)}</h3>
+          <p class="muted" style="font-size:13px">${dur((se.end||se.start)-se.start)} · ${doneSets(se.entries)} séries · ${ton(volume(se.entries))}</p></div>
+          <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir</button></div>
+        <div class="sep"></div>
+        ${se.entries.map(en=>{
+          const sets=en.sets.filter(x=>x.done);
+          if(!sets.length) return "";
+          return `<div class="between" style="padding:4px 0">
+            <span class="ellip grow">${esc(exById(en.exId).name)}</span>
+            <span class="muted tnum" style="font-size:13.5px">${sets.map(x=>par(x.w,x.r)).join("  ")}</span></div>`;
+        }).join("")}
+      </div>`;
+    });
+  } else if(st.count){
+    h += `<p class="muted stack" style="font-size:13px;text-align:center">Toque num dia destacado para ver o treino.</p>`;
+  } else {
+    h += `<div class="empty">Nenhum treino registrado neste mês.</div>`;
+  }
+  return h;
+}
+
 function vConfig(){
   return temaCard() + dataCard() +
     `<div class="card stack"><h3>Sobre</h3>
@@ -1187,7 +1279,7 @@ window.addEventListener("offline", renderOffline);
 function renderNav(){
   const items=[["treinar","Treinar"],["rotinas","Rotinas"],["historico","Histórico"],["progresso","Progresso"]];
   $("#nav").innerHTML = items.map(([k,l]) =>
-    `<button class="${view===k||(view==="edit"&&k==="rotinas")||(view==="config"&&k===voltarPara)?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}">${l}</button>`).join("");
+    `<button class="${view===k||(view==="edit"&&k==="rotinas")||((view==="config"||view==="calendario")&&k===voltarPara)?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}">${l}</button>`).join("");
 }
 
 function render(){
@@ -1196,7 +1288,8 @@ function render(){
   renderTop();
   const body = view==="treinar" ? vTreinar() : view==="rotinas" ? vRotinas() :
                view==="edit" ? vEdit() : view==="historico" ? vHistorico() :
-               view==="config" ? vConfig() : vProgresso();
+               view==="config" ? vConfig() :
+               view==="calendario" ? vCalendario() : vProgresso();
   $("#view").innerHTML = body;
   renderNav(); renderFloat(); renderOffline();
   if(fk){ const el=document.querySelector(`[data-k="${fk}"]`);
@@ -1258,8 +1351,13 @@ document.addEventListener("click", ev => {
 
   switch(a){
     case "nav": if(view==="edit") syncRoutineName(); view=t.dataset.v; confirmKey=null; render(); break;
+    case "abrirCal": voltarPara = view; view="calendario"; calMes=inicioMes(Date.now()); calDia=null;
+      confirmKey=null; render(); window.scrollTo(0,0); break;
+    case "mes": { const b=new Date(calMes||inicioMes(Date.now()));
+      calMes=new Date(b.getFullYear(), b.getMonth()+(+t.dataset.d), 1).getTime(); calDia=null; render(); break; }
+    case "dia": calDia = calDia===+t.dataset.d ? null : +t.dataset.d; render(); break;
     case "abrirConfig": voltarPara = view; view="config"; confirmKey=null; render(); window.scrollTo(0,0); break;
-    case "voltarConfig": view = voltarPara || "treinar"; render(); break;
+    case "voltarConfig": view = voltarPara || "treinar"; calDia=null; render(); break;
     case "tpl": applyTemplate(t.dataset.k); break;
     case "newRoutine": { const r={id:uid(),name:"Nova rotina",items:[]}; S.routines.push(r); editingId=r.id; view="edit"; save(); render(); break; }
     case "editRoutine": editingId=id; view="edit"; render(); break;
