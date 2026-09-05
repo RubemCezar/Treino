@@ -371,6 +371,7 @@ let focoIdx = 0;            // exercício em foco na sessão
 let progSheet = null;       // exercício com o gráfico de progressão aberto
 let voltarPara = "treinar"; // de onde configurações/calendário foram abertos
 let calMes = null, calDia = null;   // mês exibido e dia selecionado no calendário
+let rotinaAberta = null;            // rotina expandida na tela inicial
 const modo = () => (S.meta && S.meta.modo) || "foco";
 let swEstado = null;   // estado do modo offline, quando publicado
 let progressEx = null;
@@ -590,7 +591,7 @@ function renderTop(){
         <p class="muted tnum" style="font-size:13.5px"><span id="elapsed">${dur(Date.now()-S.active.start)}</span> · ${n} série${n===1?"":"s"}${v>0?" · "+ton(v):""}</p></div>
       <button class="btn primary" data-act="finish">Concluir</button></div>`;
   } else {
-    const titles={treinar:"Treinar",rotinas:"Rotinas",historico:"Histórico",progresso:"Progresso",
+    const titles={treinar:"Treino",rotinas:"Rotinas",historico:"Histórico",progresso:"Progresso",
                   edit:"Editar rotina",config:"Configurações",calendario:"Calendário"};
     html = `<div class="toprow"><h1>${titles[view]||"Treino"}</h1><div class="row" style="gap:6px">`;
     if(view==="rotinas") html += `<button class="btn sm" data-act="newRoutine">Nova rotina</button>`;
@@ -658,24 +659,36 @@ function vTreinar(){
     h += `<h2 class="stack">Iniciar treino</h2>`;
     S.routines.forEach(r => {
       const lastDone = S.sessions.filter(s=>s.routineId===r.id).slice(-1)[0];
+      const aberta = rotinaAberta===r.id;
       h += `<div class="card stack" style="padding:12px 14px">
         <div class="between">
-          <div class="grow">
+          <div class="grow" data-act="abrirRotina" data-id="${r.id}" role="button" tabindex="0"
+            aria-expanded="${aberta?"true":"false"}" style="cursor:pointer">
             <h3 class="ellip">${esc(r.name)}</h3>
-            <p class="muted" style="font-size:13px">${r.items.length} exercícios${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"}</p>
+            <p class="muted" style="font-size:13px">${r.items.length} exercícios${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"} ${aberta?"▲":"▼"}</p>
           </div>
           <button class="btn primary" data-act="start" data-id="${r.id}">Treinar</button>
-        </div></div>`;
+        </div>
+        ${aberta ? `<div class="sep"></div>` + (r.items.length
+          ? r.items.map(it=>`<div class="between" style="padding:4px 0">
+              <span class="ellip grow">${esc(exById(it.exId).name)}</span>
+              <span class="muted tnum" style="font-size:13px;white-space:nowrap">${it.sets}×${esc(it.reps||"—")}</span></div>`).join("")
+          : `<p class="muted" style="font-size:13px">Rotina sem exercícios. Use Editar para montar.</p>`) : ""}
+      </div>`;
     });
   }
 
   if(last.length){
     h += `<h2 class="stack">Últimos treinos</h2>`;
-    last.forEach(s => {
+    last.forEach(se => {
+      const aberto = openId===se.id;
       h += `<div class="card stack" style="padding:12px 14px"><div class="between">
-        <div class="grow"><h3 class="ellip">${esc(s.name)}</h3>
-          <p class="muted" style="font-size:13px">${dateLabel(s.end||s.start)} · ${doneSets(s.entries)} séries · ${ton(volume(s.entries))}</p></div>
-        <button class="btn sm" data-act="repeat" data-id="${s.id}">Repetir</button></div></div>`;
+        <div class="grow" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
+          aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
+          <h3 class="ellip">${esc(se.name)}</h3>
+          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${doneSets(se.entries)} séries · ${ton(volume(se.entries))} ${aberto?"▲":"▼"}</p></div>
+        <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir</button></div>
+        ${aberto ? `<div class="sep"></div>` + listaExercicios(se, false) : ""}</div>`;
     });
   }
   return h;
@@ -1306,7 +1319,7 @@ window.addEventListener("online", renderOffline);
 window.addEventListener("offline", renderOffline);
 
 function renderNav(){
-  const items=[["treinar","Treinar"],["rotinas","Rotinas"],["historico","Histórico"],["progresso","Progresso"]];
+  const items=[["treinar","Treino"],["rotinas","Rotinas"],["historico","Histórico"],["progresso","Progresso"]];
   $("#nav").innerHTML = items.map(([k,l]) =>
     `<button class="${view===k||(view==="edit"&&k==="rotinas")||((view==="config"||view==="calendario")&&k===voltarPara)?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}">${l}</button>`).join("");
 }
@@ -1377,10 +1390,12 @@ document.addEventListener("click", ev => {
   const id=t.dataset.id, i=+t.dataset.i, j=+t.dataset.j;
 
   switch(a){
-    case "nav": if(view==="edit") syncRoutineName(); view=t.dataset.v; render(); break;
+    case "nav": if(view==="edit") syncRoutineName(); view=t.dataset.v;
+      S.meta=Object.assign({},S.meta||{},{aba:view}); save(); render(); break;
     case "dlgSim": { const fn=dialogo && dialogo.fn; dialogo=null; renderFloat(); if(fn) fn(); break; }
     case "dlgNao": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       dialogo=null; renderFloat(); break;
+    case "abrirRotina": rotinaAberta = rotinaAberta===id ? null : id; render(); break;
     case "abrirCal": voltarPara = view; view="calendario"; calMes=inicioMes(Date.now()); calDia=null; render(); window.scrollTo(0,0); break;
     case "mes": { const b=new Date(calMes||inicioMes(Date.now()));
       calMes=new Date(b.getFullYear(), b.getMonth()+(+t.dataset.d), 1).getTime(); calDia=null; render(); break; }
@@ -1608,6 +1623,10 @@ async function wake(on){
 }
 document.addEventListener("visibilitychange", () => { if(document.visibilityState==="visible" && S.active) wake(true); });
 
-load().then(() => { aplicarTema(); render(); if(S.active) wake(true); });
+load().then(() => {
+  const aba = S.meta && S.meta.aba;
+  if(["treinar","rotinas","historico","progresso"].includes(aba)) view = aba;
+  aplicarTema(); render(); if(S.active) wake(true);
+});
 })();
 </script>
