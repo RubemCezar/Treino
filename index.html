@@ -672,6 +672,13 @@ function vTreinar(){
   return h;
 }
 
+function melhorSerie(sets){
+  let b=null;
+  sets.forEach(s => { const w=num(s.w), r=num(s.r);
+    if(!b || w>b.w || (w===b.w && r>b.r)) b={w,r}; });
+  return b ? par(b.w,b.r) : "—";
+}
+
 function sessaoAberta(ei, en){
   const total=en.sets.length, done=en.sets.filter(s=>s.done).length;
   // pronto = fechado por padrão, menos o exercício em que se acabou de mexer
@@ -774,6 +781,13 @@ function vSessionFoco(){
   return h;
 }
 
+function melhorSerie(sets){
+  let b=null;
+  sets.forEach(s => { const w=num(s.w), r=num(s.r);
+    if(!b || w>b.w || (w===b.w && r>b.r)) b={w,r}; });
+  return b ? par(b.w,b.r) : "—";
+}
+
 function sessaoAberta(ei, en){
   const total=en.sets.length, done=en.sets.filter(s=>s.done).length;
   // pronto = fechado por padrão, menos o exercício em que se acabou de mexer
@@ -810,8 +824,9 @@ function vSession(){
         style="cursor:pointer;align-items:center">
         <div class="grow">
           <h3 class="ellip">${esc(ex.name)}</h3>
-          ${aberto ? "" : `<p class="muted tnum" style="font-size:12.5px">${
-              feitas.length ? feitas.map(s=>par(s.w,s.r)).join("  ") : (soAquece ? "só aquecimento" : "sem séries")}</p>`}
+          ${aberto ? "" : `<p class="muted" style="font-size:12.5px">${
+              feitas.length ? feitas.length+" série"+(feitas.length===1?"":"s")+" · melhor "+melhorSerie(feitas)
+                            : (soAquece ? "só aquecimento" : "sem séries")}</p>`}
         </div>
         <button class="btn ghost sm" data-act="exMenu" data-i="${ei}" aria-label="Opções de ${esc(ex.name)}"
           style="font-size:18px;line-height:1;padding:4px 8px">⋯</button>
@@ -947,6 +962,35 @@ function dataCard(){
   </div>`;
 }
 
+function listaExercicios(se, aberto){
+  return se.entries.map(en => {
+    const sets=en.sets.filter(x=>x.done);
+    if(!sets.length) return "";
+    return `<div style="padding:5px 0">
+      <div class="between"><span class="ellip grow">${esc(exById(en.exId).name)}</span>
+        <span class="muted" style="font-size:13px;white-space:nowrap">${sets.length} série${sets.length===1?"":"s"}</span></div>
+      ${aberto ? `<p class="muted tnum" style="font-size:13px;margin-top:3px">${sets.map(x=>par(x.w,x.r)).join("   ")}</p>` : ""}
+    </div>`;
+  }).join("");
+}
+
+function cardSessao(se, aberto){
+  return `<div class="card stack">
+    <div class="between" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
+      aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
+      <div class="grow"><h3 class="ellip">${esc(se.name)}</h3>
+        <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${dur((se.end||se.start)-se.start)} · ${doneSets(se.entries)} séries · ${ton(volume(se.entries))}</p></div>
+      <span class="muted">${aberto?"▲":"▼"}</span>
+    </div>
+    <div class="sep"></div>
+    ${listaExercicios(se, aberto)}
+    <div class="row" style="margin-top:8px">
+      <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir treino</button>
+      <button class="btn sm danger" data-act="delSession" data-id="${se.id}" style="margin-left:auto">${confirmKey==="dels:"+se.id?"Confirmar":"Apagar"}</button>
+    </div>
+  </div>`;
+}
+
 function vCalendario(){
   const base=new Date(calMes || inicioMes(Date.now()));
   const ano=base.getFullYear(), mes=base.getMonth();
@@ -990,21 +1034,7 @@ function vCalendario(){
     h += `<h2 class="stack">${calDia} de ${base.toLocaleDateString("pt-BR",{month:"long"})}</h2>`;
     if(!doDia.length){
       h += `<div class="empty">Nenhum treino nesse dia.</div>`;
-    } else doDia.forEach(se => {
-      h += `<div class="card stack">
-        <div class="between"><div class="grow"><h3 class="ellip">${esc(se.name)}</h3>
-          <p class="muted" style="font-size:13px">${dur((se.end||se.start)-se.start)} · ${doneSets(se.entries)} séries · ${ton(volume(se.entries))}</p></div>
-          <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir</button></div>
-        <div class="sep"></div>
-        ${se.entries.map(en=>{
-          const sets=en.sets.filter(x=>x.done);
-          if(!sets.length) return "";
-          return `<div class="between" style="padding:4px 0">
-            <span class="ellip grow">${esc(exById(en.exId).name)}</span>
-            <span class="muted tnum" style="font-size:13.5px">${sets.map(x=>par(x.w,x.r)).join("  ")}</span></div>`;
-        }).join("")}
-      </div>`;
-    });
+    } else doDia.forEach(se => { h += cardSessao(se, openId===se.id); });
   } else if(st.count){
     h += `<p class="muted stack" style="font-size:13px;text-align:center">Toque num dia destacado para ver o treino.</p>`;
   } else {
@@ -1024,29 +1054,7 @@ function vConfig(){
 function vHistorico(){
   if(!S.sessions.length) return `<div class="empty">Nenhum treino registrado ainda.<br>Ao concluir um treino ele aparece aqui.</div>`;
   let h="";
-  S.sessions.slice().reverse().forEach(s => {
-    const open = openId===s.id;
-    h += `<div class="card stack">
-      <div class="between" data-act="openSession" data-id="${s.id}" style="cursor:pointer">
-        <div class="grow"><h3 class="ellip">${esc(s.name)}</h3>
-          <p class="muted" style="font-size:13px">${dateLabel(s.end||s.start)} · ${dur((s.end||s.start)-s.start)} · ${doneSets(s.entries)} séries · ${ton(volume(s.entries))}</p></div>
-        <span class="muted">${open?"▲":"▼"}</span>
-      </div>`;
-    if(open){
-      h += `<div class="sep"></div>`;
-      s.entries.forEach(en => {
-        const sets = en.sets.filter(x=>x.done);
-        if(!sets.length) return;
-        h += `<div class="between" style="padding:5px 0">
-          <span class="ellip grow">${esc(exById(en.exId).name)}</span>
-          <span class="muted tnum" style="font-size:13.5px">${sets.map(x=>par(x.w,x.r)).join("  ")}</span></div>`;
-      });
-      h += `<div class="row" style="margin-top:10px">
-        <button class="btn sm" data-act="repeat" data-id="${s.id}">Repetir treino</button>
-        <button class="btn sm danger" data-act="delSession" data-id="${s.id}" style="margin-left:auto">${confirmKey==="dels:"+s.id?"Confirmar":"Apagar"}</button></div>`;
-    }
-    h += `</div>`;
-  });
+  S.sessions.slice().reverse().forEach(se => { h += cardSessao(se, openId===se.id); });
   return h;
 }
 
