@@ -110,6 +110,12 @@
   .sheet .body{overflow:auto;padding:12px 16px 20px}
   .pick{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line);cursor:pointer}
   .pick:hover{background:var(--hover)}
+  .emtreino{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:9;width:calc(100% - 32px);max-width:608px;
+        background:var(--bar-bg);color:var(--bar-fg);border-radius:12px;padding:9px 12px;display:flex;align-items:center;gap:10px;
+        box-shadow:0 6px 22px rgba(17,20,24,.22)}
+  .emtreino button{font:inherit;font-size:13px;font-weight:550;border:1px solid rgba(255,255,255,.28);background:transparent;
+        color:var(--bar-fg);border-radius:8px;padding:6px 10px;cursor:pointer;white-space:nowrap}
+  .emtreino .pt{width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none}
   .toast{position:fixed;bottom:132px;left:50%;transform:translateX(-50%);background:var(--bar-bg);color:var(--bar-fg);
          padding:10px 16px;border-radius:999px;font-size:14px;z-index:30;max-width:90%;text-align:center}
   .sep{height:1px;background:var(--line);margin:12px 0}
@@ -588,7 +594,13 @@ setInterval(() => {
     if(left<=0){ restEnd=0; beep(); renderFloat(); }
     else { const el=$("#restT"); if(el) el.textContent=mmss(left); else renderFloat(); }
   }
-  if(S.active){ const el=$("#elapsed"); if(el) el.textContent=dur(Date.now()-S.active.start); }
+  if(S.active){
+    const el=$("#elapsed"); if(el) el.textContent=dur(Date.now()-S.active.start);
+    const barra=document.querySelector(".emtreino");
+    const precisa = !(naSessao && view==="treinar");
+    if(precisa && !barra) renderFloat();
+    if(!precisa && barra) renderFloat();
+  }
 }, 500);
 
 /* ================= VIEWS ================= */
@@ -905,7 +917,7 @@ function vEdit(){
       </div></div>`;
   });
   h += `<div class="stack"><button class="btn wide" data-act="pickRoutine">+ Adicionar exercício</button></div>
-        <div class="stack"><button class="btn wide primary" data-act="saveRoutine">Concluir edição</button></div>`;
+        <div class="stack"><button class="btn wide primary" data-act="saveRoutine">Salvar rotina</button></div>`;
   return h;
 }
 
@@ -1230,6 +1242,18 @@ function renderPicker(){
 
 function renderFloat(){
   const host=$("#float"); host.innerHTML="";
+  const emTreino = S.active && !(naSessao && view==="treinar");
+  if(emTreino){
+    const n=doneSets(S.active.entries);
+    host.insertAdjacentHTML("beforeend", `<div class="emtreino" ${restEnd?'style="bottom:118px"':""}>
+      <span class="pt" aria-hidden="true"></span>
+      <div class="grow" style="min-width:0">
+        <strong class="ellip" style="display:block;font-size:14px">${esc(S.active.name)}</strong>
+        <span style="font-size:12px;opacity:.8">em andamento · ${dur(Date.now()-S.active.start)} · ${n} série${n===1?"":"s"}</span>
+      </div>
+      <button data-act="retomar">Voltar ao treino</button></div>`);
+  }
+
   if(restEnd){
     const left=(restEnd-Date.now())/1000;
     host.insertAdjacentHTML("beforeend", `<div class="rest" role="status" aria-live="polite" aria-label="Descanso">
