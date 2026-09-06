@@ -115,6 +115,7 @@
   .sep{height:1px;background:var(--line);margin:12px 0}
   .big{font-size:30px;font-weight:650;letter-spacing:-0.03em;font-variant-numeric:tabular-nums}
   .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .stats.dois{grid-template-columns:repeat(2,1fr)}
   .stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
   .stat b{display:block;font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
   .stat span{font-size:12px;color:var(--muted)}
@@ -372,6 +373,8 @@ let progSheet = null;       // exercício com o gráfico de progressão aberto
 let voltarPara = "treinar"; // de onde configurações/calendário foram abertos
 let calMes = null, calDia = null;   // mês exibido e dia selecionado no calendário
 let rotinaAberta = null;            // rotina expandida na tela inicial
+let histLimite = 15;                // quantos treinos o histórico desenha por vez
+let exEdit = null;                  // exercício criado sendo editado
 const modo = () => (S.meta && S.meta.modo) || "foco";
 let swEstado = null;   // estado do modo offline, quando publicado
 let progressEx = null;
@@ -381,7 +384,7 @@ let restEnd = 0, restTotal = 0;
 let saveT = null;
 
 const allEx = () => LIB.concat(S.custom);
-const exById = id => allEx().find(e => e.id === id) || {id, name:id, muscle:"—"};
+const exById = id => allEx().find(e => e.id === id) || {id, name:"Exercício removido", muscle:"Outros"};
 
 /* Armazenamento: usa o storage do Claude quando existe; fora dele (arquivo salvo
    no celular/PC) cai para o armazenamento do próprio navegador. */
@@ -455,7 +458,15 @@ function migrar(){
     });
   };
   if(S.active && Array.isArray(S.active.entries)) S.active.entries.forEach(arrumaSets);
-  S.routines.forEach(r => { if(!Array.isArray(r.items)) r.items=[]; });
+  S.routines.forEach(r => {
+    if(!Array.isArray(r.items)) r.items=[];
+    r.items.forEach(it => {
+      it.sets = Math.min(20, Math.max(1, parseInt(it.sets,10)||3));
+      it.rest = Math.min(600, Math.max(0, parseInt(it.rest,10)||90));
+      if(typeof it.reps!=="string") it.reps = String(it.reps||"");
+      it.reps = it.reps.slice(0,12);
+    });
+  });
 }
 /* grava na hora ao sair/minimizar, para não depender do atraso do save */
 ["pagehide","visibilitychange","beforeunload"].forEach(ev =>
@@ -591,11 +602,11 @@ function renderTop(){
         <p class="muted tnum" style="font-size:13.5px"><span id="elapsed">${dur(Date.now()-S.active.start)}</span> · ${n} série${n===1?"":"s"}${v>0?" · "+ton(v):""}</p></div>
       <button class="btn primary" data-act="finish">Concluir</button></div>`;
   } else {
-    const titles={treinar:"Treino",rotinas:"Rotinas",historico:"Histórico",progresso:"Progresso",
+    const titles={treinar:"Treino",historico:"Histórico",progresso:"Progresso",
                   edit:"Editar rotina",config:"Configurações",calendario:"Calendário"};
     html = `<div class="toprow"><h1>${titles[view]||"Treino"}</h1><div class="row" style="gap:6px">`;
-    if(view==="rotinas") html += `<button class="btn sm" data-act="newRoutine">Nova rotina</button>`;
     if(view==="config" || view==="calendario") html += `<button class="btn sm" data-act="voltarConfig">Voltar</button>`;
+    else if(view==="edit") html += `<button class="btn sm primary" data-act="saveRoutine">Salvar</button>`;
     else if(view!=="edit") html += `<button class="btn ghost sm" data-act="abrirConfig" aria-label="Configurações"
         style="font-size:19px;line-height:1;padding:4px 8px">⚙</button>`;
     html += `</div></div>`;
@@ -607,10 +618,9 @@ function vTreinar(){
   if(S.active && naSessao) return vSession();
   const w=weekStats();
   const last=S.sessions.slice(-3).reverse();
-  let h = `<div class="stats stack">
+  let h = `<div class="stats dois stack">
       <div class="stat"><b>${w.count}</b><span>treinos na semana</span></div>
-      <div class="stat"><b>${ton(w.vol)}</b><span>volume da semana</span></div>
-      <button class="stat" data-act="abrirCal" aria-label="Ver calendário de treinos">
+      <button class="stat" data-act="abrirCal" aria-label="Ver calendário de treinos" type="button">
         <b>${monthStats(Date.now()).count}</b><span>treinos no mês ›</span></button>
     </div>`;
 
@@ -658,7 +668,7 @@ function vTreinar(){
   } else {
     h += `<h2 class="stack">Iniciar treino</h2>`;
     S.routines.forEach(r => {
-      const lastDone = S.sessions.filter(s=>s.routineId===r.id).slice(-1)[0];
+      const lastDone = S.sessions.filter(x=>x.routineId===r.id).slice(-1)[0];
       const aberta = rotinaAberta===r.id;
       h += `<div class="card stack" style="padding:12px 14px">
         <div class="between">
@@ -673,9 +683,15 @@ function vTreinar(){
           ? r.items.map(it=>`<div class="between" style="padding:4px 0">
               <span class="ellip grow">${esc(exById(it.exId).name)}</span>
               <span class="muted tnum" style="font-size:13px;white-space:nowrap">${it.sets}×${esc(it.reps||"—")}</span></div>`).join("")
-          : `<p class="muted" style="font-size:13px">Rotina sem exercícios. Use Editar para montar.</p>`) : ""}
+          : `<p class="muted" style="font-size:13px">Rotina sem exercícios ainda.</p>`) +
+          `<div class="row" style="margin-top:10px;gap:6px">
+            <button class="btn sm" data-act="editRoutine" data-id="${r.id}">Editar</button>
+            <button class="btn sm danger" data-act="delRoutine" data-id="${r.id}" style="margin-left:auto">Apagar</button>
+          </div>` : ""}
       </div>`;
     });
+    h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Nova rotina</button></div>
+          <div class="stack" style="text-align:center"><button class="btn ghost" data-act="startEmpty">Treinar sem rotina</button></div>`;
   }
 
   if(last.length){
@@ -686,7 +702,7 @@ function vTreinar(){
         <div class="grow" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
           aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
           <h3 class="ellip">${esc(se.name)}</h3>
-          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${doneSets(se.entries)} séries · ${ton(volume(se.entries))} ${aberto?"▲":"▼"}</p></div>
+          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${doneSets(se.entries)} séries ${aberto?"▲":"▼"}</p></div>
         <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir</button></div>
         ${aberto ? `<div class="sep"></div>` + listaExercicios(se, false) : ""}</div>`;
     });
@@ -723,7 +739,7 @@ function cardExercicio(en, ei, foco, cabecalho){
   if(foco){
     if(rec.w>0 || rec.e>0){
       h += `<div class="row" style="gap:6px;margin-top:8px;flex-wrap:wrap">
-        <span class="tag pr">recorde ${rec.w>0?fmt(rec.w)+" kg":fmt(rec.e)+" kg est."}</span>
+        <span class="tag pr">recorde ${rec.w>0?fmt(rec.w)+" kg":"índice "+Math.round(rec.e)}</span>
         <button class="chip" data-act="verProg" data-id="${en.exId}">Ver progressão</button></div>`;
     } else {
       h += `<div class="row" style="margin-top:8px"><button class="chip" data-act="verProg" data-id="${en.exId}">Ver progressão</button></div>`;
@@ -862,39 +878,9 @@ function vSession(){
   return h;
 }
 
-function vRotinas(){
-  if(!S.routines.length){
-    return `<div class="card stack"><h3>Nenhuma rotina ainda</h3>
-      <p class="muted" style="margin-top:4px">Comece por um modelo e ajuste os exercícios como quiser.</p>
-      <div class="row" style="flex-wrap:wrap;margin-top:12px">
-        <button class="btn sm" data-act="tpl" data-k="ABC">ABC</button>
-        <button class="btn sm" data-act="tpl" data-k="PPL">Push/Pull/Legs</button>
-        <button class="btn sm" data-act="tpl" data-k="UL">Superior/Inferior</button>
-        <button class="btn sm" data-act="tpl" data-k="FB">Corpo inteiro</button>
-        <button class="btn sm primary" data-act="newRoutine">Montar do zero</button>
-      </div></div>`;
-  }
-  let h="";
-  S.routines.forEach(r => {
-    h += `<div class="card stack">
-      <div class="between"><div class="grow"><h3 class="ellip">${esc(r.name)}</h3>
-        <p class="muted" style="font-size:13px">${r.items.map(i=>exById(i.exId).name).slice(0,3).join(" · ")}${r.items.length>3?" +"+(r.items.length-3):""}</p></div>
-      </div>
-      <div class="row" style="margin-top:10px;gap:6px">
-        <button class="btn sm primary" data-act="start" data-id="${r.id}">Treinar</button>
-        <button class="btn sm" data-act="editRoutine" data-id="${r.id}">Editar</button>
-        <button class="btn sm" data-act="dupRoutine" data-id="${r.id}">Duplicar</button>
-        <button class="btn sm danger" data-act="delRoutine" data-id="${r.id}" style="margin-left:auto">Apagar</button>
-      </div></div>`;
-  });
-  h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Nova rotina</button></div>
-        <div class="stack" style="text-align:center"><button class="btn ghost" data-act="startEmpty">Treinar sem rotina</button></div>`;
-  return h;
-}
-
 function vEdit(){
   const r = S.routines.find(x=>x.id===editingId);
-  if(!r){ view="rotinas"; return vRotinas(); }
+  if(!r){ view="treinar"; return vTreinar(); }
   let h = `<div class="card stack">
       <label class="muted" style="font-size:12.5px">Nome da rotina</label>
       <input class="field" style="margin-top:6px" id="rname" value="${esc(r.name)}" placeholder="Treino A · Peito e tríceps">
@@ -913,13 +899,13 @@ function vEdit(){
           <button class="btn sm danger" data-act="rmItem" data-i="${i}">×</button>
         </div></div>
       <div class="row" style="margin-top:10px;gap:8px">
-        <label class="muted grow" style="font-size:12.5px">séries<input class="field" style="margin-top:4px" type="number" min="1" max="12" data-item="${i}" data-f="sets" value="${it.sets}"></label>
-        <label class="muted grow" style="font-size:12.5px">reps alvo<input class="field" style="margin-top:4px" data-item="${i}" data-f="reps" value="${esc(it.reps)}"></label>
-        <label class="muted grow" style="font-size:12.5px">descanso (s)<input class="field" style="margin-top:4px" type="number" min="0" step="15" data-item="${i}" data-f="rest" value="${it.rest}"></label>
+        <label class="muted grow" style="font-size:12.5px">séries<input class="field" style="margin-top:4px" type="number" min="1" max="20" data-item="${i}" data-f="sets" value="${it.sets}"></label>
+        <label class="muted grow" style="font-size:12.5px">reps alvo<input class="field" style="margin-top:4px" maxlength="12" data-item="${i}" data-f="reps" value="${esc(it.reps)}"></label>
+        <label class="muted grow" style="font-size:12.5px">descanso (s)<input class="field" style="margin-top:4px" type="number" min="0" max="600" step="15" data-item="${i}" data-f="rest" value="${it.rest}"></label>
       </div></div>`;
   });
   h += `<div class="stack"><button class="btn wide" data-act="pickRoutine">+ Adicionar exercício</button></div>
-        <div class="stack"><button class="btn wide primary" data-act="saveRoutine">Salvar rotina</button></div>`;
+        <div class="stack"><button class="btn wide primary" data-act="saveRoutine">Concluir edição</button></div>`;
   return h;
 }
 
@@ -996,15 +982,29 @@ function listaExercicios(se, aberto){
   }).join("");
 }
 
+function gruposDaSessao(se){
+  const m={};
+  se.entries.forEach(en => {
+    const n=en.sets.filter(x=>x.done && !x.warm).length;
+    if(!n) return;
+    const g=exById(en.exId).muscle;
+    m[g]=(m[g]||0)+n;
+  });
+  return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+}
+
 function cardSessao(se, aberto){
   return `<div class="card stack">
     <div class="between" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
       aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
       <div class="grow"><h3 class="ellip">${esc(se.name)}</h3>
-        <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${dur((se.end||se.start)-se.start)} · ${doneSets(se.entries)} séries · ${ton(volume(se.entries))}</p></div>
+        <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${dur((se.end||se.start)-se.start)} · ${doneSets(se.entries)} séries</p></div>
       <span class="muted">${aberto?"▲":"▼"}</span>
     </div>
     <div class="sep"></div>
+    <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">
+      ${gruposDaSessao(se).slice(0,6).map(([g,n])=>`<span class="tag mus">${esc(g)} ${n}</span>`).join("")}
+    </div>
     ${listaExercicios(se, aberto)}
     <div class="row" style="margin-top:8px">
       <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir treino</button>
@@ -1065,8 +1065,27 @@ function vCalendario(){
   return h;
 }
 
+function usoDoExercicio(id){
+  const treinos = S.sessions.filter(se => se.entries.some(en => en.exId===id)).length;
+  const rotinas = S.routines.filter(r => r.items.some(it => it.exId===id)).length;
+  return {treinos, rotinas};
+}
+
+function meusExerciciosCard(){
+  if(!S.custom.length) return "";
+  return `<div class="card stack"><h3>Meus exercícios</h3>
+    <p class="muted" style="font-size:13px;margin-top:4px">Exercícios que você criou. Corrigir o grupo aqui vale também para os treinos já registrados.</p>
+    <div style="margin-top:10px">
+      ${S.custom.map(ex=>{ const u=usoDoExercicio(ex.id);
+        return `<div class="pick" data-act="editEx" data-id="${ex.id}" role="button" tabindex="0" aria-label="Editar ${esc(ex.name)}">
+          <div class="grow" style="min-width:0"><span class="ellip" style="display:block">${esc(ex.name)}</span>
+            <span class="muted" style="font-size:12px">${u.treinos? u.treinos+" treino"+(u.treinos===1?"":"s") : "nunca usado"}</span></div>
+          <span class="tag mus">${esc(ex.muscle)}</span></div>`; }).join("")}
+    </div></div>`;
+}
+
 function vConfig(){
-  return temaCard() + dataCard() +
+  return temaCard() + meusExerciciosCard() + dataCard() +
     `<div class="card stack"><h3>Sobre</h3>
       <p class="muted" style="font-size:13px;margin-top:4px">Seus treinos ficam apenas neste aparelho. Não há conta, servidor nem sincronização — por isso o backup é o que garante os dados a longo prazo.</p>
       <p class="muted" style="font-size:13px;margin-top:8px">${S.sessions.length} treinos, ${S.routines.length} rotinas, ${S.custom.length} exercícios criados por você.</p>
@@ -1075,8 +1094,15 @@ function vConfig(){
 
 function vHistorico(){
   if(!S.sessions.length) return `<div class="empty">Nenhum treino registrado ainda.<br>Ao concluir um treino ele aparece aqui.</div>`;
+  const total=S.sessions.length;
+  const lista=S.sessions.slice().reverse().slice(0, histLimite);
   let h="";
-  S.sessions.slice().reverse().forEach(se => { h += cardSessao(se, openId===se.id); });
+  lista.forEach(se => { h += cardSessao(se, openId===se.id); });
+  if(total>lista.length){
+    h += `<div class="stack"><button class="btn wide" data-act="maisHist">Ver mais treinos (${total-lista.length} restantes)</button></div>`;
+  } else if(total>15){
+    h += `<p class="muted stack" style="font-size:12.5px;text-align:center">${total} treinos registrados.</p>`;
+  }
   return h;
 }
 
@@ -1103,17 +1129,17 @@ function vProgresso(){
     <div class="stats stack">
       ${comCarga
         ? `<div class="stat"><b>${fmt(bw)} kg</b><span>maior carga</span></div>
-           <div class="stat"><b>${fmt(be)} kg</b><span>1RM estimado</span></div>`
+           <div class="stat"><b>${Math.round(be)}</b><span>índice de força</span></div>`
         : `<div class="stat"><b>${brm}</b><span>maior série (reps)</span></div>
            <div class="stat"><b>${repsTot}</b><span>reps no total</span></div>`}
       <div class="stat"><b>${hist.length}</b><span>sessões</span></div>
     </div>
     <div class="card stack">
-      <div class="between"><h3>${comCarga?"1RM estimado por sessão":"Melhor série por sessão"}</h3>
-        <span class="muted tnum" style="font-size:13px">${delta>=0?"+":""}${fmt(delta)} ${comCarga?"kg":"reps"}</span></div>
+      <div class="between"><h3>${comCarga?"Índice de força por sessão":"Melhor série por sessão"}</h3>
+        <span class="muted tnum" style="font-size:13px">${delta>=0?"+":""}${comCarga?Math.round(delta):fmt(delta)+" reps"}</span></div>
       ${chart(hist, val)}
       <p class="muted" style="font-size:12px;margin-top:6px">${comCarga
-        ? "Estimativa por Epley: carga × (1 + reps ÷ 30). Perde precisão acima de ~12 reps; use como tendência, não como carga de teste."
+        ? "O índice combina carga e repetições numa escala só (carga × (1 + reps ÷ 30)), para comparar sessões diferentes. Sobe quando você melhora por qualquer via. Perde precisão acima de ~12 reps."
         : "Exercício sem carga externa: a curva acompanha a melhor série em repetições."}</p>
     </div>
     <h2 class="stack">Sessão a sessão</h2>`;
@@ -1139,7 +1165,7 @@ function chart(hist, val){
   const y=v=>H-20-((v-mn)/(mx-mn))*(H-20-10);
   const line=pts.map((p,i)=>`${x(i).toFixed(1)},${y(val(p)).toFixed(1)}`).join(" ");
   const area=`${P},${H-20} ${line} ${x(pts.length-1).toFixed(1)},${H-20}`;
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="150" role="img" aria-label="Evolução do 1RM estimado" style="margin-top:8px">
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="150" role="img" aria-label="Evolução do índice de força" style="margin-top:8px">
     <line x1="${P}" y1="${H-20}" x2="${W-8}" y2="${H-20}" stroke="var(--line)"/>
     <polygon points="${area}" fill="var(--blue-soft)"/>
     <polyline points="${line}" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
@@ -1193,7 +1219,7 @@ function renderPicker(){
               <span class="grow ellip">${esc(e.name)}</span><span class="tag mus">${esc(e.muscle)}</span></div>`).join("")}</div>
           <p class="muted" style="font-size:12.5px;margin-top:16px">Todos os exercícios</p>` : ""}
         <div style="margin-top:10px">
-          ${list.map(e=>`<div class="pick" data-act="choose" data-id="${e.id}">
+          ${list.map(e=>`<div class="pick" data-act="choose" data-id="${e.id}" role="button" tabindex="0">
               <span class="grow ellip">${esc(e.name)}</span><span class="tag mus">${esc(e.muscle)}</span></div>`).join("")
             || `<div class="empty">Nada encontrado.</div>`}
         </div>
@@ -1289,6 +1315,29 @@ function renderFloat(){
     const ta=document.getElementById("bkTa");
     if(ta && copiar){ ta.focus(); ta.select(); }
   }
+  if(exEdit){
+    const ex=S.custom.find(x=>x.id===exEdit);
+    if(ex){
+      const uso=usoDoExercicio(ex.id);
+      host.insertAdjacentHTML("beforeend", `<div class="overlay" data-act="fecharEx"><div class="sheet" data-stop="1">
+        <header><h2 class="ellip">Editar exercício</h2><button class="btn sm" data-act="fecharEx">Fechar</button></header>
+        <div class="body">
+          <label class="muted" style="font-size:12.5px">Nome</label>
+          <input class="field" style="margin-top:6px" id="exNome" value="${esc(ex.name)}">
+          <p style="margin-top:16px">Grupo</p>
+          <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+            ${MUSCLES.map(m=>`<button class="chip ${ex.muscle===m?"on":""}" data-act="exGrupo" data-m="${m}">${m}</button>`).join("")}
+          </div>
+          <p class="muted" style="font-size:12.5px;margin-top:14px">${
+            uso.treinos||uso.rotinas
+              ? "Usado em "+uso.treinos+" treino(s) e "+uso.rotinas+" rotina(s). Renomear e trocar o grupo corrige todos eles."
+              : "Ainda não usado em nenhum treino."}</p>
+          <button class="btn wide primary stack" data-act="salvarEx">Salvar</button>
+          <button class="btn wide danger" style="margin-top:8px" data-act="apagarEx" ${uso.treinos?"disabled":""}>Apagar exercício</button>
+          ${uso.treinos?`<p class="muted" style="font-size:12.5px;margin-top:8px">Não dá para apagar: ele aparece em treinos já registrados, que ficariam sem nome. Renomeie se quiser corrigir.</p>`:""}
+        </div></div></div>`);
+    }
+  }
   if(dialogo){
     host.insertAdjacentHTML("beforeend", `<div class="overlay centro" data-act="dlgNao">
       <div class="dialogo" data-stop="1" role="alertdialog" aria-modal="true" aria-label="${esc(dialogo.titulo)}">
@@ -1319,17 +1368,17 @@ window.addEventListener("online", renderOffline);
 window.addEventListener("offline", renderOffline);
 
 function renderNav(){
-  const items=[["treinar","Treino"],["rotinas","Rotinas"],["historico","Histórico"],["progresso","Progresso"]];
+  const items=[["treinar","Treino"],["historico","Histórico"],["progresso","Progresso"]];
   $("#nav").innerHTML = items.map(([k,l]) =>
-    `<button class="${view===k||(view==="edit"&&k==="rotinas")||((view==="config"||view==="calendario")&&k===voltarPara)?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}">${l}</button>`).join("");
+    `<button class="${view===k||(view==="edit"&&k==="treinar")||((view==="config"||view==="calendario")&&k===voltarPara)?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}">${l}</button>`).join("");
 }
 
 function render(){
+  if(!["treinar","edit","historico","progresso","config","calendario"].includes(view)) view="treinar";
   const act=document.activeElement;
   const fk = act && act.dataset ? act.dataset.k : null;
   renderTop();
-  const body = view==="treinar" ? vTreinar() : view==="rotinas" ? vRotinas() :
-               view==="edit" ? vEdit() : view==="historico" ? vHistorico() :
+  const body = view==="treinar" ? vTreinar() : view==="edit" ? vEdit() : view==="historico" ? vHistorico() :
                view==="config" ? vConfig() :
                view==="calendario" ? vCalendario() : vProgresso();
   $("#view").innerHTML = body;
@@ -1343,7 +1392,8 @@ function newSession(routine){
   const entries = (routine ? routine.items : []).map(it => {
     const prev = lastSetsFor(it.exId);
     const sets=[];
-    for(let i=0;i<it.sets;i++){
+    const nSeries=Math.min(20, Math.max(1, parseInt(it.sets,10)||3));
+    for(let i=0;i<nSeries;i++){
       const p = prev ? prev[Math.min(i, prev.length-1)] : null;
       sets.push({w:"", r:"", done:false, sug: p ? {w:fmt(num(p.w)), r:String(num(p.r))} : null});
     }
@@ -1364,10 +1414,10 @@ function finish(){
     let bw=0,be=0;
     en.sets.forEach(s=>{ if(s.w>bw)bw=s.w; const e=e1rm(s.w,s.r); if(e>be)be=e; });
     if(bw>before.w+0.001) prs.push(exById(en.exId).name+" "+fmt(bw)+" kg");
-    else if(be>before.e+0.001) prs.push(exById(en.exId).name+" (1RM est.)");
+    else if(be>before.e+0.001) prs.push(exById(en.exId).name+" (índice)");
   });
   S.sessions.push({id:uid(), routineId:a.routineId, name:a.name, start:a.start, end:Date.now(), entries});
-  S.active=null; restEnd=0; exMenu=null; progSheet=null; dobrado.clear(); ultimoMexido=null; naSessao=false; focoIdx=0; view="historico"; wake(false); save(); render();
+  S.active=null; restEnd=0; exMenu=null; progSheet=null; picker=null; dobrado.clear(); ultimoMexido=null; naSessao=false; focoIdx=0; view="historico"; wake(false); save(); render();
   toast(prs.length ? "Treino salvo · "+prs.length+" recorde"+(prs.length>1?"s":"")+": "+prs.slice(0,2).join(", ") : "Treino salvo.");
 }
 
@@ -1375,7 +1425,7 @@ function applyTemplate(k){
   TEMPLATES[k].forEach(([name,exs]) => {
     S.routines.push({id:uid(), name, items: exs.map(n => ({exId:slug(n), sets:3, reps:"8-12", rest:90}))});
   });
-  view="rotinas"; save(); render(); toast("Modelo adicionado. Ajuste os exercícios como quiser.");
+  view="treinar"; save(); render(); toast("Modelo adicionado. Ajuste os exercícios como quiser.");
 }
 
 function syncRoutineName(){
@@ -1389,13 +1439,43 @@ document.addEventListener("click", ev => {
   const a=t.dataset.act;
   const id=t.dataset.id, i=+t.dataset.i, j=+t.dataset.j;
 
+  // ações que só fazem sentido com treino em andamento
+  if(!S.active && ["check","addSet","delSet","warm","setRest","rmEx","moverEx","swapEx",
+                   "foco","irPara","dobrar","exMenu","pickWorkout","cancelWorkout","finish"].includes(a)){
+    render(); return;
+  }
   switch(a){
-    case "nav": if(view==="edit") syncRoutineName(); view=t.dataset.v;
+    case "nav": if(view==="edit") syncRoutineName(); if(t.dataset.v!=="historico") histLimite=15; view=t.dataset.v;
       S.meta=Object.assign({},S.meta||{},{aba:view}); save(); render(); break;
     case "dlgSim": { const fn=dialogo && dialogo.fn; dialogo=null; renderFloat(); if(fn) fn(); break; }
     case "dlgNao": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       dialogo=null; renderFloat(); break;
-    case "abrirRotina": rotinaAberta = rotinaAberta===id ? null : id; render(); break;
+    case "editEx": exEdit=id; renderFloat(); break;
+    case "fecharEx": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
+      exEdit=null; renderFloat(); break;
+    case "exGrupo": { const ex=S.custom.find(x=>x.id===exEdit); if(!ex) break;
+      const campo=document.getElementById("exNome"); if(campo) ex.name=campo.value.trim()||ex.name;
+      ex.muscle=t.dataset.m; save(); renderFloat(); break; }
+    case "salvarEx": { const ex=S.custom.find(x=>x.id===exEdit); if(!ex) break;
+      const campo=document.getElementById("exNome");
+      if(campo && campo.value.trim()) ex.name=campo.value.trim();
+      exEdit=null; save(); render(); toast("Exercício atualizado."); break; }
+    case "apagarEx": { const ex=S.custom.find(x=>x.id===exEdit); if(!ex) break;
+      if(usoDoExercicio(ex.id).treinos) break;
+      pedirConfirmacao("Apagar exercício?",
+        `“${ex.name}” sai da sua lista e das rotinas em que aparece.`,
+        "Apagar",
+        () => { S.custom=S.custom.filter(x=>x.id!==ex.id);
+                S.routines.forEach(r=>{ r.items=r.items.filter(it=>it.exId!==ex.id); });
+                exEdit=null; save(); render(); toast("Exercício apagado."); });
+      exEdit=null; renderFloat(); break; }
+    case "maisHist": histLimite += 25; render(); break;
+    case "abrirRotina": {
+      const abrindo = rotinaAberta!==id;
+      rotinaAberta = abrindo ? id : null; render();
+      if(abrindo){ const el=document.querySelector(`[data-act="abrirRotina"][data-id="${id}"]`);
+        if(el && el.scrollIntoView) el.scrollIntoView({block:"nearest", behavior:"smooth"}); }
+      break; }
     case "abrirCal": voltarPara = view; view="calendario"; calMes=inicioMes(Date.now()); calDia=null; render(); window.scrollTo(0,0); break;
     case "mes": { const b=new Date(calMes||inicioMes(Date.now()));
       calMes=new Date(b.getFullYear(), b.getMonth()+(+t.dataset.d), 1).getTime(); calDia=null; render(); break; }
@@ -1405,7 +1485,7 @@ document.addEventListener("click", ev => {
     case "tpl": applyTemplate(t.dataset.k); break;
     case "newRoutine": { const r={id:uid(),name:"Nova rotina",items:[]}; S.routines.push(r); editingId=r.id; view="edit"; save(); render(); break; }
     case "editRoutine": editingId=id; view="edit"; render(); break;
-    case "saveRoutine": syncRoutineName(); view="rotinas"; save(); render(); toast("Rotina salva."); break;
+    case "saveRoutine": syncRoutineName(); view="treinar"; save(); render(); toast("Rotina salva."); break;
     case "delRoutine": { const r=S.routines.find(x=>x.id===id); if(!r) break;
       pedirConfirmacao("Apagar rotina?",
         `“${r.name}” sai da lista. Os treinos já registrados no histórico continuam lá.`,
@@ -1420,6 +1500,9 @@ document.addEventListener("click", ev => {
     case "closePicker": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break; picker=null; renderFloat(); break;
     case "mus": picker.muscle=t.dataset.m||null; renderFloat(); break;
     case "choose":
+      if((picker.mode==="workout"||picker.mode==="swap") && !S.active){
+        picker=null; render(); toast("O treino foi encerrado."); break;
+      }
       if(picker.mode==="swap"){ S.active.entries[picker.i].exId=id; }
       else if(picker.mode==="routine"){ const r=S.routines.find(x=>x.id===editingId); r.items.push({exId:id,sets:3,reps:"8-12",rest:90}); }
       else { S.active.entries.push({exId:id, rest:90, reps:"", note:"", sets:novasSeries(id)}); focoIdx=S.active.entries.length-1; }
@@ -1428,6 +1511,9 @@ document.addEventListener("click", ev => {
       picker.novo = nome.charAt(0).toUpperCase()+nome.slice(1); renderFloat(); break; }
     case "cancelNovo": picker.novo=null; renderFloat(); break;
     case "novoGrupo": {
+      if((picker.mode==="workout"||picker.mode==="swap") && !S.active){
+        picker=null; render(); toast("O treino foi encerrado."); break;
+      }
       const ex={id:"c_"+slug(picker.novo)+"_"+uid(), name:picker.novo, muscle:t.dataset.m};
       S.custom.push(ex);
       if(picker.mode==="swap"){ S.active.entries[picker.i].exId=ex.id; }
@@ -1448,7 +1534,9 @@ document.addEventListener("click", ev => {
       st.done=!st.done; ultimoMexido=i; dobrado.delete(i);
       if(st.done && (S.active.entries[i].rest||0)>0) startRest(S.active.entries[i].rest);
       save(); render(); break; }
-    case "addSet": { const en=S.active.entries[i]; const l=en.sets[en.sets.length-1];
+    case "addSet": { const en=S.active.entries[i];
+      if(en.sets.length>=20){ toast("Máximo de 20 séries por exercício."); break; }
+      const l=en.sets[en.sets.length-1];
       const base = l ? (l.w!=="" || l.r!=="" ? {w:String(l.w),r:String(l.r)} : l.sug) : null;
       en.sets.push({w:"",r:"",done:false,sug: base && (base.w||base.r) ? base : null}); save(); render(); break; }
     case "delSet": { const en=S.active.entries[i]; if(en.sets.length>1) en.sets.pop(); save(); render(); break; }
@@ -1460,7 +1548,7 @@ document.addEventListener("click", ev => {
     case "modoFoco": S.meta=Object.assign({},S.meta||{},{modo:"foco"}); focoIdx=primeiroIncompleto(); save(); render(); break;
     case "verProg": progSheet=id; renderFloat(); break;
     case "fecharProg": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break; progSheet=null; renderFloat(); break;
-    case "exMenu": exMenu=i; renderFloat(); break;
+    case "exMenu": if(!S.active) break; exMenu=i; renderFloat(); break;
     case "moverEx": { const d=+t.dataset.d, alvo=i+d, es=S.active.entries;
       if(alvo<0 || alvo>=es.length) break;
       const [mv]=es.splice(i,1); es.splice(alvo,0,mv);
@@ -1471,9 +1559,6 @@ document.addEventListener("click", ev => {
     case "setRest": S.active.entries[i].rest=+t.dataset.d; save(); render(); break;
     case "swapEx": exMenu=null; picker={mode:"swap", i:i, q:"", muscle:null}; renderFloat(); break;
     case "warm": { const st=S.active.entries[i].sets[j]; st.warm=!st.warm; save(); render(); break; }
-    case "dupRoutine": { const r=S.routines.find(x=>x.id===id);
-      S.routines.push({id:uid(), name:r.name+" (cópia)", items:r.items.map(it=>Object.assign({},it))});
-      save(); render(); toast("Rotina duplicada."); break; }
     case "finish": finish(); break;
     case "cancelWorkout": {
       const feitas=doneSets(S.active.entries);
@@ -1481,7 +1566,8 @@ document.addEventListener("click", ev => {
         feitas ? `As ${feitas} séries marcadas serão perdidas e nada vai para o histórico.`
                : "O treino em andamento será encerrado sem registrar nada.",
         "Descartar",
-        () => { S.active=null; restEnd=0; naSessao=false; focoIdx=0; wake(false); save(); render(); toast("Treino descartado."); });
+        () => { S.active=null; restEnd=0; naSessao=false; focoIdx=0; picker=null; exMenu=null; progSheet=null;
+                 dobrado.clear(); ultimoMexido=null; wake(false); save(); render(); toast("Treino descartado."); });
       break; }
     case "openSession": openId = openId===id ? null : id; render(); break;
     case "delSession": { const se=S.sessions.find(x=>x.id===id); if(!se) break;
@@ -1531,7 +1617,9 @@ document.addEventListener("input", ev => {
   }
   if(el.dataset.item!==undefined && editingId){
     const r=S.routines.find(x=>x.id===editingId); const it=r.items[+el.dataset.item]; const f=el.dataset.f;
-    it[f] = f==="reps" ? el.value : Math.max(f==="sets"?1:0, parseInt(el.value||"0",10)||0);
+    if(f==="reps"){ it.reps = el.value.slice(0,12); }
+    else if(f==="sets"){ it.sets = Math.min(20, Math.max(1, parseInt(el.value||"0",10)||1)); }
+    else { it.rest = Math.min(600, Math.max(0, parseInt(el.value||"0",10)||0)); }
     save(); return;
   }
   if(el.id==="rname"){ syncRoutineName(); save(); }
@@ -1551,7 +1639,7 @@ document.addEventListener("keydown", ev => {
   if((ev.key==="Enter"||ev.key===" ") && ev.target.getAttribute && ev.target.getAttribute("role")==="button"){
     ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); return;
   }
-  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; renderFloat(); }
+  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; renderFloat(); }
   if(S.active && naSessao && modo()==="foco" && !picker && !exMenu && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
     if(ev.key==="ArrowLeft" && focoIdx>0){ focoIdx--; render(); }
     if(ev.key==="ArrowRight" && focoIdx<S.active.entries.length-1){ focoIdx++; render(); }
@@ -1625,7 +1713,7 @@ document.addEventListener("visibilitychange", () => { if(document.visibilityStat
 
 load().then(() => {
   const aba = S.meta && S.meta.aba;
-  if(["treinar","rotinas","historico","progresso"].includes(aba)) view = aba;
+  if(["treinar","historico","progresso"].includes(aba)) view = aba;
   aplicarTema(); render(); if(S.active) wake(true);
 });
 })();
