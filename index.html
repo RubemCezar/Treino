@@ -65,6 +65,7 @@
   .tag{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11.5px;font-weight:600;letter-spacing:0}
   .tag.pr{background:var(--pr-bg);color:var(--red)}
   .tag.mus{background:var(--chip-bg);color:var(--muted)}
+  .tag.prox{background:var(--blue-soft);color:var(--blue);vertical-align:middle;font-weight:600}
   input,select,textarea{font:inherit;color:var(--ink)}
   .field{width:100%;border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:var(--surface);color:var(--ink)}
   .field:focus{outline:2px solid var(--blue);outline-offset:-1px;border-color:transparent}
@@ -553,6 +554,15 @@ function monthStats(ts){
           series:ss.reduce((a,x)=>a+doneSets(x.entries),0)};
 }
 
+function proximoTreino(){
+  if(!S.routines.length) return null;
+  for(let i=S.sessions.length-1;i>=0;i--){
+    const idx=S.routines.findIndex(r=>r.id===S.sessions[i].routineId);
+    if(idx>=0) return S.routines[(idx+1)%S.routines.length].id;
+  }
+  return S.routines[0].id;   // ainda sem histórico: começa pelo primeiro
+}
+
 function weekByMuscle(){
   const now=new Date(); const day=(now.getDay()+6)%7;
   const mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-day).getTime();
@@ -615,7 +625,7 @@ function renderTop(){
       <button class="btn primary" data-act="finish">Concluir</button></div>`;
   } else {
     const titles={treinar:"Treino",historico:"Histórico",progresso:"Progresso",
-                  edit:"Editar rotina",config:"Configurações",calendario:"Calendário"};
+                  edit:"Editar treino",config:"Configurações",calendario:"Calendário"};
     html = `<div class="toprow"><h1>${titles[view]||"Treino"}</h1><div class="row" style="gap:6px">`;
     if(view==="config" || view==="calendario") html += `<button class="btn sm" data-act="voltarConfig">Voltar</button>`;
     else if(view==="edit") html += `<button class="btn sm primary" data-act="saveRoutine">Salvar</button>`;
@@ -668,7 +678,7 @@ function vTreinar(){
         </div>`).join("")}</div></div>`;
   }
   if(!S.routines.length){
-    h += `<div class="card stack"><h3>Comece pela rotina</h3>
+    h += `<div class="card stack"><h3>Monte seu treino</h3>
       <p class="muted" style="margin-top:4px">Escolha um modelo pronto e ajuste depois, ou monte a sua do zero.</p>
       <div class="row" style="flex-wrap:wrap;margin-top:12px">
         <button class="btn sm" data-act="tpl" data-k="ABC">ABC</button>
@@ -678,15 +688,17 @@ function vTreinar(){
         <button class="btn sm primary" data-act="newRoutine">Montar do zero</button>
       </div></div>`;
   } else {
-    h += `<h2 class="stack">Iniciar treino</h2>`;
-    S.routines.forEach(r => {
+    h += `<h2 class="stack">Meus treinos</h2>`;
+    const proximo = proximoTreino();
+    S.routines.forEach((r,idx) => {
       const lastDone = S.sessions.filter(x=>x.routineId===r.id).slice(-1)[0];
       const aberta = rotinaAberta===r.id;
-      h += `<div class="card stack" style="padding:12px 14px">
+      const ehProximo = r.id===proximo && S.routines.length>1;
+      h += `<div class="card stack" style="padding:12px 14px${ehProximo?";border-left:3px solid var(--blue)":""}">
         <div class="between">
           <div class="grow" data-act="abrirRotina" data-id="${r.id}" role="button" tabindex="0"
             aria-expanded="${aberta?"true":"false"}" style="cursor:pointer">
-            <h3 class="ellip">${esc(r.name)}</h3>
+            <h3 class="ellip">${esc(r.name)}${ehProximo?` <span class="tag prox">é a vez</span>`:""}</h3>
             <p class="muted" style="font-size:13px">${r.items.length} exercícios${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"} ${aberta?"▲":"▼"}</p>
           </div>
           <button class="btn primary" data-act="start" data-id="${r.id}">Treinar</button>
@@ -695,19 +707,21 @@ function vTreinar(){
           ? r.items.map(it=>`<div class="between" style="padding:4px 0">
               <span class="ellip grow">${esc(exById(it.exId).name)}</span>
               <span class="muted tnum" style="font-size:13px;white-space:nowrap">${it.sets}×${esc(it.reps||"—")}</span></div>`).join("")
-          : `<p class="muted" style="font-size:13px">Rotina sem exercícios ainda.</p>`) +
+          : `<p class="muted" style="font-size:13px">Treino sem exercícios ainda.</p>`) +
           `<div class="row" style="margin-top:10px;gap:6px">
+            <button class="btn sm" data-act="moverRotina" data-id="${r.id}" data-d="-1" ${idx===0?"disabled":""} aria-label="Antes na sequência">↑</button>
+            <button class="btn sm" data-act="moverRotina" data-id="${r.id}" data-d="1" ${idx===S.routines.length-1?"disabled":""} aria-label="Depois na sequência">↓</button>
             <button class="btn sm" data-act="editRoutine" data-id="${r.id}">Editar</button>
             <button class="btn sm danger" data-act="delRoutine" data-id="${r.id}" style="margin-left:auto">Apagar</button>
           </div>` : ""}
       </div>`;
     });
-    h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Nova rotina</button></div>
-          <div class="stack" style="text-align:center"><button class="btn ghost" data-act="startEmpty">Treinar sem rotina</button></div>`;
+    h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Novo treino</button></div>
+          <div class="stack" style="text-align:center"><button class="btn ghost" data-act="startEmpty">Treino avulso</button></div>`;
   }
 
   if(last.length){
-    h += `<h2 class="stack">Últimos treinos</h2>`;
+    h += `<h2 class="stack">Feitos recentemente</h2>`;
     last.forEach(se => {
       const aberto = openId===se.id;
       h += `<div class="card stack" style="padding:12px 14px"><div class="between">
@@ -894,7 +908,7 @@ function vEdit(){
   const r = S.routines.find(x=>x.id===editingId);
   if(!r){ view="treinar"; return vTreinar(); }
   let h = `<div class="card stack">
-      <label class="muted" style="font-size:12.5px">Nome da rotina</label>
+      <label class="muted" style="font-size:12.5px">Nome do treino</label>
       <input class="field" style="margin-top:6px" id="rname" value="${esc(r.name)}" placeholder="Treino A · Peito e tríceps">
     </div>`;
   if(!r.items.length){
@@ -917,7 +931,7 @@ function vEdit(){
       </div></div>`;
   });
   h += `<div class="stack"><button class="btn wide" data-act="pickRoutine">+ Adicionar exercício</button></div>
-        <div class="stack"><button class="btn wide primary" data-act="saveRoutine">Salvar rotina</button></div>`;
+        <div class="stack"><button class="btn wide primary" data-act="saveRoutine">Salvar treino</button></div>`;
   return h;
 }
 
@@ -966,7 +980,7 @@ function dataCard(){
              : "Atenção: este navegador bloqueia o salvamento. Baixe um backup antes de fechar.";
   return `<div class="card stack">
     <h3>Seus dados</h3>
-    <p class="muted" style="font-size:13px;margin-top:4px">${onde} ${S.sessions.length} treinos, ${S.routines.length} rotinas.</p>
+    <p class="muted" style="font-size:13px;margin-top:4px">${onde} ${S.sessions.length} treinos feitos, ${S.routines.length} treinos salvos.</p>
     ${swEstado ? `<p class="muted" style="font-size:13px">Modo offline: ${swEstado==="ativo"
         ? "<span style=\"color:var(--green)\">ativo</span> — funciona sem internet."
         : swEstado==="instalando" ? "instalando, recarregue a página uma vez."
@@ -1100,7 +1114,7 @@ function vConfig(){
   return temaCard() + meusExerciciosCard() + dataCard() +
     `<div class="card stack"><h3>Sobre</h3>
       <p class="muted" style="font-size:13px;margin-top:4px">Seus treinos ficam apenas neste aparelho. Não há conta, servidor nem sincronização — por isso o backup é o que garante os dados a longo prazo.</p>
-      <p class="muted" style="font-size:13px;margin-top:8px">${S.sessions.length} treinos, ${S.routines.length} rotinas, ${S.custom.length} exercícios criados por você.</p>
+      <p class="muted" style="font-size:13px;margin-top:8px">${S.sessions.length} treinos feitos, ${S.routines.length} treinos salvos, ${S.custom.length} exercícios criados por você.</p>
     </div>`;
 }
 
@@ -1354,7 +1368,7 @@ function renderFloat(){
           </div>
           <p class="muted" style="font-size:12.5px;margin-top:14px">${
             uso.treinos||uso.rotinas
-              ? "Usado em "+uso.treinos+" treino(s) e "+uso.rotinas+" rotina(s). Renomear e trocar o grupo corrige todos eles."
+              ? "Usado em "+uso.treinos+" treino(s) feito(s) e "+uso.rotinas+" treino(s) salvo(s). Renomear e trocar o grupo corrige todos eles."
               : "Ainda não usado em nenhum treino."}</p>
           <button class="btn wide primary stack" data-act="salvarEx">Salvar</button>
           <button class="btn wide danger" style="margin-top:8px" data-act="apagarEx" ${uso.treinos?"disabled":""}>Apagar exercício</button>
@@ -1487,13 +1501,17 @@ document.addEventListener("click", ev => {
     case "apagarEx": { const ex=S.custom.find(x=>x.id===exEdit); if(!ex) break;
       if(usoDoExercicio(ex.id).treinos) break;
       pedirConfirmacao("Apagar exercício?",
-        `“${ex.name}” sai da sua lista e das rotinas em que aparece.`,
+        `“${ex.name}” sai da sua lista e dos treinos salvos em que aparece.`,
         "Apagar",
         () => { S.custom=S.custom.filter(x=>x.id!==ex.id);
                 S.routines.forEach(r=>{ r.items=r.items.filter(it=>it.exId!==ex.id); });
                 exEdit=null; save(); render(); toast("Exercício apagado."); });
       exEdit=null; renderFloat(); break; }
     case "maisHist": histLimite += 25; render(); break;
+    case "moverRotina": { const d=+t.dataset.d, i0=S.routines.findIndex(x=>x.id===id), alvo=i0+d;
+      if(i0<0 || alvo<0 || alvo>=S.routines.length) break;
+      const [mv]=S.routines.splice(i0,1); S.routines.splice(alvo,0,mv);
+      save(); render(); break; }
     case "abrirRotina": {
       const abrindo = rotinaAberta!==id;
       rotinaAberta = abrindo ? id : null; render();
@@ -1509,12 +1527,12 @@ document.addEventListener("click", ev => {
     case "tpl": applyTemplate(t.dataset.k); break;
     case "newRoutine": { const r={id:uid(),name:"Nova rotina",items:[]}; S.routines.push(r); editingId=r.id; view="edit"; save(); render(); break; }
     case "editRoutine": editingId=id; view="edit"; render(); break;
-    case "saveRoutine": syncRoutineName(); view="treinar"; save(); render(); toast("Rotina salva."); break;
+    case "saveRoutine": syncRoutineName(); view="treinar"; save(); render(); toast("Treino atualizado."); break;
     case "delRoutine": { const r=S.routines.find(x=>x.id===id); if(!r) break;
-      pedirConfirmacao("Apagar rotina?",
-        `“${r.name}” sai da lista. Os treinos já registrados no histórico continuam lá.`,
+      pedirConfirmacao("Apagar este treino salvo?",
+        `“${r.name}” sai dos seus treinos. Os que você já fez continuam no histórico.`,
         "Apagar",
-        () => { S.routines=S.routines.filter(x=>x.id!==id); save(); render(); toast("Rotina apagada."); });
+        () => { S.routines=S.routines.filter(x=>x.id!==id); save(); render(); toast("Treino apagado da lista."); });
       break; }
     case "rmItem": { const r=S.routines.find(x=>x.id===editingId); syncRoutineName(); r.items.splice(i,1); save(); render(); break; }
     case "moveEx": { const r=S.routines.find(x=>x.id===editingId); syncRoutineName(); const d=+t.dataset.d;
@@ -1595,8 +1613,8 @@ document.addEventListener("click", ev => {
       break; }
     case "openSession": openId = openId===id ? null : id; render(); break;
     case "delSession": { const se=S.sessions.find(x=>x.id===id); if(!se) break;
-      pedirConfirmacao("Apagar este treino?",
-        `“${se.name}” de ${dateLabel(se.end||se.start)} sai do histórico, do calendário e das estatísticas. Não dá para desfazer.`,
+      pedirConfirmacao("Apagar este registro?",
+        `O treino “${se.name}” de ${dateLabel(se.end||se.start)} sai do histórico, do calendário e das estatísticas. Não dá para desfazer.`,
         "Apagar",
         () => { S.sessions=S.sessions.filter(x=>x.id!==id); openId=null; save(); render(); toast("Treino apagado."); });
       break; }
