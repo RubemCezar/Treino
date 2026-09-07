@@ -387,6 +387,8 @@ let calMes = null, calDia = null;   // mês exibido e dia selecionado no calend�
 let rotinaAberta = null;            // rotina expandida na tela inicial
 let histLimite = 15;                // quantos treinos o histórico desenha por vez
 let exEdit = null;                  // exercício criado sendo editado
+let resumoEx = null;                // exercício que acabou de ser concluído
+const mostrarResumo = () => !(S.meta && S.meta.semResumo);
 const modo = () => (S.meta && S.meta.modo) || "foco";
 let swEstado = null;   // estado do modo offline, quando publicado
 let progressEx = null;
@@ -740,6 +742,21 @@ function vTreinar(){
   return h;
 }
 
+function metricasEx(sets){
+  const val = sets.filter(s=>s.done!==false && !s.warm);
+  let reps=0, carga=0, indice=0, volume=0;
+  val.forEach(s=>{ const w=num(s.w), r=num(s.r);
+    reps+=r; volume+=w*r; if(w>carga) carga=w;
+    const e=e1rm(w,r); if(e>indice) indice=e; });
+  return {series:val.length, reps, carga, indice, volume};
+}
+
+function comparativoEx(exId, setsAtuais){
+  const agora = metricasEx(setsAtuais);
+  const antes = lastSetsFor(exId);
+  return {agora, antes: antes ? metricasEx(antes) : null};
+}
+
 function melhorSerie(sets){
   let b=null;
   sets.forEach(s => { const w=num(s.w), r=num(s.r);
@@ -847,6 +864,21 @@ function vSessionFoco(){
     <div class="stack"><button class="btn wide" data-act="pickWorkout">+ Adicionar exercício</button></div>
     <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">Descartar treino</button></div>`;
   return h;
+}
+
+function metricasEx(sets){
+  const val = sets.filter(s=>s.done!==false && !s.warm);
+  let reps=0, carga=0, indice=0, volume=0;
+  val.forEach(s=>{ const w=num(s.w), r=num(s.r);
+    reps+=r; volume+=w*r; if(w>carga) carga=w;
+    const e=e1rm(w,r); if(e>indice) indice=e; });
+  return {series:val.length, reps, carga, indice, volume};
+}
+
+function comparativoEx(exId, setsAtuais){
+  const agora = metricasEx(setsAtuais);
+  const antes = lastSetsFor(exId);
+  return {agora, antes: antes ? metricasEx(antes) : null};
 }
 
 function melhorSerie(sets){
@@ -968,6 +1000,16 @@ function aplicarTema(){
 }
 if(window.matchMedia){
   try{ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", aplicarTema); }catch(e){}
+}
+
+function resumoCard(){
+  const on = mostrarResumo();
+  return `<div class="card stack"><h3>Resumo ao terminar exercício</h3>
+    <p class="muted" style="font-size:13px;margin-top:4px">Ao marcar a última série, mostra o comparativo com a última vez e o atalho para o próximo exercício.</p>
+    <div class="row" style="gap:6px;margin-top:10px">
+      <button class="chip ${on?"on":""}" data-act="semResumo" data-v="0">Mostrar</button>
+      <button class="chip ${on?"":"on"}" data-act="semResumo" data-v="1">Não mostrar</button>
+    </div></div>`;
 }
 
 function temaCard(){
@@ -1116,7 +1158,7 @@ function meusExerciciosCard(){
 }
 
 function vConfig(){
-  return temaCard() + meusExerciciosCard() + dataCard() +
+  return temaCard() + resumoCard() + meusExerciciosCard() + dataCard() +
     `<div class="card stack"><h3>Sobre</h3>
       <p class="muted" style="font-size:13px;margin-top:4px">Seus treinos ficam apenas neste aparelho. Não há conta, servidor nem sincronização — por isso o backup é o que garante os dados a longo prazo.</p>
       <p class="muted" style="font-size:13px;margin-top:8px">${S.sessions.length} treinos feitos, ${S.routines.length} treinos salvos, ${S.custom.length} exercícios criados por você.</p>
@@ -1381,6 +1423,37 @@ function renderFloat(){
         </div></div></div>`);
     }
   }
+  if(resumoEx!==null && S.active && S.active.entries[resumoEx]){
+    const ei=resumoEx, en=S.active.entries[ei], ex=exById(en.exId);
+    const {agora, antes} = comparativoEx(en.exId, en.sets);
+    const ultimo = ei>=S.active.entries.length-1;
+    const linha = (rotulo, val, ant, unidade, casas) => {
+      const d = ant===null||ant===undefined ? null : val-ant;
+      const fmtn = n => casas ? fmt(n) : Math.round(n);
+      const cor = d===null||Math.abs(d)<0.05 ? "var(--muted)" : (d>0 ? "var(--green)" : "var(--red)");
+      const seta = d===null||Math.abs(d)<0.05 ? "—" : (d>0 ? "▲" : "▼");
+      return `<div style="flex:1;text-align:center">
+        <div style="font-size:22px;font-weight:650;letter-spacing:-.02em" class="tnum">${fmtn(val)}${unidade||""}</div>
+        <div style="font-size:12.5px;color:${cor}" class="tnum">${seta}${d!==null&&Math.abs(d)>=0.05?" "+fmtn(Math.abs(d)):""}</div>
+        <div class="muted" style="font-size:12px;margin-top:2px">${rotulo}</div>
+      </div>`;
+    };
+    host.insertAdjacentHTML("beforeend", `<div class="overlay centro" data-act="fecharResumo">
+      <div class="dialogo" data-stop="1" role="dialog" aria-modal="true" aria-label="Resumo de ${esc(ex.name)}">
+        <h3 class="ellip">${esc(ex.name)}</h3>
+        <p class="muted" style="font-size:13px;margin-top:2px">${antes ? "Comparado com a última vez" : "Primeira vez neste exercício"}</p>
+        <div class="row" style="margin-top:14px;align-items:flex-start">
+          ${linha("séries", agora.series, antes&&antes.series)}
+          ${linha("reps", agora.reps, antes&&antes.reps)}
+          ${linha("maior carga", agora.carga, antes&&antes.carga, " kg", true)}
+          ${linha("índice", agora.indice, antes&&antes.indice)}
+        </div>
+        <div class="row" style="gap:8px;margin-top:18px">
+          <button class="btn" data-act="fecharResumo">Ficar aqui</button>
+          <button class="btn primary grow" data-act="${ultimo?"finish":"proxExercicio"}">${ultimo?"Concluir treino":"Próximo exercício"}</button>
+        </div>
+      </div></div>`);
+  }
   if(dialogo){
     host.insertAdjacentHTML("beforeend", `<div class="overlay centro" data-act="dlgNao">
       <div class="dialogo" data-stop="1" role="alertdialog" aria-modal="true" aria-label="${esc(dialogo.titulo)}">
@@ -1460,7 +1533,7 @@ function finish(){
     else if(be>before.e+0.001) prs.push(exById(en.exId).name+" (índice)");
   });
   S.sessions.push({id:uid(), routineId:a.routineId, name:a.name, start:a.start, end:Date.now(), entries});
-  S.active=null; restEnd=0; exMenu=null; progSheet=null; picker=null; dobrado.clear(); ultimoMexido=null; naSessao=false; focoIdx=0; view="historico"; wake(false); save(); render();
+  S.active=null; restEnd=0; exMenu=null; progSheet=null; picker=null; resumoEx=null; dobrado.clear(); ultimoMexido=null; naSessao=false; focoIdx=0; view="historico"; wake(false); save(); render();
   toast(prs.length ? "Treino salvo · "+prs.length+" recorde"+(prs.length>1?"s":"")+": "+prs.slice(0,2).join(", ") : "Treino salvo.");
 }
 
@@ -1493,6 +1566,16 @@ document.addEventListener("click", ev => {
     case "dlgSim": { const fn=dialogo && dialogo.fn; dialogo=null; renderFloat(); if(fn) fn(); break; }
     case "dlgNao": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       dialogo=null; renderFloat(); break;
+    case "fecharResumo": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
+      resumoEx=null; renderFloat(); break;
+    case "proxExercicio": {
+      const alvo=Math.min(S.active.entries.length-1, (resumoEx===null?focoIdx:resumoEx)+1);
+      resumoEx=null; focoIdx=alvo; dobrado.delete(alvo); render();
+      if(modo()!=="foco"){ const el=document.querySelectorAll(".ex")[alvo];
+        if(el && el.scrollIntoView) el.scrollIntoView({block:"start", behavior:"smooth"}); }
+      else window.scrollTo(0,0);
+      break; }
+    case "semResumo": S.meta=Object.assign({},S.meta||{},{semResumo:t.dataset.v==="1"}); save(); render(); break;
     case "editEx": exEdit=id; renderFloat(); break;
     case "fecharEx": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       exEdit=null; renderFloat(); break;
@@ -1578,6 +1661,8 @@ document.addEventListener("click", ev => {
       }
       if(!st.done && (num(st.w)===0 && num(st.r)===0)){ toast("Preencha carga e repetições."); break; }
       st.done=!st.done; ultimoMexido=i; dobrado.delete(i);
+      const en=S.active.entries[i];
+      if(st.done && mostrarResumo() && en.sets.every(x=>x.done)) resumoEx=i;
       if(st.done && (S.active.entries[i].rest||0)>0) startRest(S.active.entries[i].rest);
       save(); render(); break; }
     case "addSet": { const en=S.active.entries[i];
@@ -1685,7 +1770,7 @@ document.addEventListener("keydown", ev => {
   if((ev.key==="Enter"||ev.key===" ") && ev.target.getAttribute && ev.target.getAttribute("role")==="button"){
     ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); return;
   }
-  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; renderFloat(); }
+  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit||resumoEx!==null)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; resumoEx=null; renderFloat(); }
   if(S.active && naSessao && modo()==="foco" && !picker && !exMenu && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
     if(ev.key==="ArrowLeft" && focoIdx>0){ focoIdx--; render(); }
     if(ev.key==="ArrowRight" && focoIdx<S.active.entries.length-1){ focoIdx++; render(); }
@@ -1717,8 +1802,8 @@ function destinoArraste(centros, idx, centroArrastado){
   let destino = idx;
   for(let j=0;j<centros.length;j++){
     if(j===idx) continue;
-    if(j<idx && centroArrastado < centros[j]){ destino = Math.min(destino, j); }
-    if(j>idx && centroArrastado > centros[j]){ destino = Math.max(destino, j); }
+    if(j<idx && centroArrastado <= centros[j]){ destino = Math.min(destino, j); }
+    if(j>idx && centroArrastado >= centros[j]){ destino = Math.max(destino, j); }
   }
   return destino;
 }
