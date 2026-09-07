@@ -42,7 +42,7 @@
   .tnum{font-variant-numeric:tabular-nums}
   .top{position:sticky;top:var(--offtop,0px);z-index:6;background:var(--paper);padding:16px 0 10px;border-bottom:1px solid transparent}
   .top.scrolled{border-bottom-color:var(--line)}
-  .toprow{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  .toprow{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
   .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
   .card + .card{margin-top:10px}
   .stack{margin-top:14px}
@@ -472,6 +472,8 @@ function migrar(){
     });
   };
   if(S.active && Array.isArray(S.active.entries)) S.active.entries.forEach(arrumaSets);
+  S.routines = S.routines.filter(r => r.items && r.items.length ||
+      !(r.name==="Nova rotina" || r.name==="Novo treino"));   // limpa treinos vazios sem nome próprio
   S.routines.forEach(r => {
     if(!Array.isArray(r.items)) r.items=[];
     r.items.forEach(it => {
@@ -633,7 +635,10 @@ function renderTop(){
   } else {
     const titles={treinar:"Treino",historico:"Histórico",progresso:"Progresso",
                   edit:"Editar treino",config:"Configurações",calendario:"Calendário"};
-    html = `<div class="toprow"><h1>${titles[view]||"Treino"}</h1><div class="row" style="gap:6px">`;
+    html = `<div class="toprow">`;
+    if(view==="edit") html += `<button class="btn ghost sm" data-act="voltarEdit" aria-label="Voltar"
+        style="font-size:20px;line-height:1;padding:2px 8px 2px 0">←</button>`;
+    html += `<h1 class="grow ellip">${titles[view]||"Treino"}</h1><div class="row" style="gap:6px">`;
     if(view==="config" || view==="calendario") html += `<button class="btn sm" data-act="voltarConfig">Voltar</button>`;
     else if(view==="edit") html += `<button class="btn sm primary" data-act="saveRoutine">Salvar</button>`;
     else if(view!=="edit") html += `<button class="btn ghost sm" data-act="abrirConfig" aria-label="Configurações"
@@ -1544,6 +1549,18 @@ function applyTemplate(k){
   view="treinar"; save(); render(); toast("Modelo adicionado. Ajuste os exercícios como quiser.");
 }
 
+/* Sai do editor guardando o que foi feito. Um treino recém-criado, sem
+   exercícios e ainda com o nome padrão, é descartado em vez de virar entulho. */
+function sairDoEditor(){
+  syncRoutineName();
+  const r = S.routines.find(x=>x.id===editingId);
+  const vazio = r && !r.items.length && (r.name==="Novo treino" || r.name==="Nova rotina" || !r.name.trim());
+  if(vazio) S.routines = S.routines.filter(x=>x.id!==r.id);
+  editingId=null; view="treinar"; save(); render();
+  if(vazio) toast("Treino vazio descartado.");
+  return !vazio;
+}
+
 function syncRoutineName(){
   const el=$("#rname"); if(el && editingId){ const r=S.routines.find(x=>x.id===editingId); if(r) r.name=el.value.trim()||r.name; }
 }
@@ -1613,9 +1630,10 @@ document.addEventListener("click", ev => {
     case "abrirConfig": voltarPara = view; view="config"; render(); window.scrollTo(0,0); break;
     case "voltarConfig": view = voltarPara || "treinar"; calDia=null; render(); break;
     case "tpl": applyTemplate(t.dataset.k); break;
-    case "newRoutine": { const r={id:uid(),name:"Nova rotina",items:[]}; S.routines.push(r); editingId=r.id; view="edit"; save(); render(); break; }
+    case "newRoutine": { const r={id:uid(),name:"Novo treino",items:[]}; S.routines.push(r); editingId=r.id; view="edit"; save(); render(); break; }
     case "editRoutine": editingId=id; view="edit"; render(); break;
-    case "saveRoutine": syncRoutineName(); view="treinar"; save(); render(); toast("Treino atualizado."); break;
+    case "saveRoutine": if(sairDoEditor()) toast("Treino atualizado."); break;
+    case "voltarEdit": sairDoEditor(); break;
     case "delRoutine": { const r=S.routines.find(x=>x.id===id); if(!r) break;
       pedirConfirmacao("Apagar este treino salvo?",
         `“${r.name}” sai dos seus treinos. Os que você já fez continuam no histórico.`,
