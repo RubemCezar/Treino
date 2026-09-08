@@ -141,6 +141,8 @@
        justify-content:center;cursor:pointer;padding:0}
   .dia[disabled]{color:var(--muted);opacity:.55;cursor:default}
   .dia.treino{background:var(--blue-soft);color:var(--blue);font-weight:650}
+  .dia.cardio:not(.treino){background:var(--ok-bg);color:var(--green);font-weight:650}
+  .dia.cardio.treino{box-shadow:inset 0 -3px 0 var(--green)}
   .dia.hoje{border-color:var(--line)}
   .dia.sel{outline:2px solid var(--blue);outline-offset:-1px}
   .dia.vazio{visibility:hidden}
@@ -347,6 +349,27 @@ const LIB_RAW = [
 ];
 const slug = s => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g,"_").replace(/^_|_$/g,"");
 const LIB = LIB_RAW.map(([name,muscle]) => ({id:slug(name), name, muscle}));
+const CARDIOS = [
+  ["Esteira","Academia"],["Caminhada inclinada","Academia"],["Bicicleta ergométrica","Academia"],
+  ["Bike spinning","Academia"],["Elíptico","Academia"],["Escada simulador","Academia"],
+  ["Remo ergômetro","Academia"],["Airbike","Academia"],["Corda naval","Academia"],
+  ["Pular corda","Academia"],["Circuito funcional","Academia"],["HIIT","Academia"],["CrossFit","Academia"],
+  ["Corrida na rua","Corrida e caminhada"],["Corrida na pista","Corrida e caminhada"],
+  ["Trail run","Corrida e caminhada"],["Caminhada","Corrida e caminhada"],["Trilha","Corrida e caminhada"],
+  ["Ciclismo na rua","Ciclismo"],["Mountain bike","Ciclismo"],
+  ["Natação","Água"],["Hidroginástica","Água"],["Stand up paddle","Água"],["Surfe","Água"],["Caiaque","Água"],
+  ["Futebol","Coletivos"],["Futsal","Coletivos"],["Vôlei","Coletivos"],["Vôlei de praia","Coletivos"],
+  ["Basquete","Coletivos"],["Handebol","Coletivos"],["Rugby","Coletivos"],
+  ["Tênis","Raquete"],["Beach tennis","Raquete"],["Padel","Raquete"],["Squash","Raquete"],
+  ["Badminton","Raquete"],["Tênis de mesa","Raquete"],
+  ["Boxe","Lutas"],["Muay thai","Lutas"],["Jiu-jitsu","Lutas"],["Judô","Lutas"],["Karatê","Lutas"],
+  ["MMA","Lutas"],["Capoeira","Lutas"],
+  ["Dança","Outros"],["Zumba","Outros"],["Escalada","Outros"],["Patinação","Outros"],["Skate","Outros"],
+  ["Peteca","Outros"],["Outro","Outros"]
+];
+const CARDIO_CATS = [...new Set(CARDIOS.map(c=>c[1]))];
+const cardioNomes = () => CARDIOS.map(c=>c[0]);
+const INTENSIDADES = ["Leve","Moderado","Intenso"];
 const MUSCLES = ["Peito", "Costas", "Ombros", "Bíceps", "Tríceps", "Antebraço", "Quadríceps", "Posterior", "Glúteos", "Panturrilha", "Core", "Cardio", "Outros"];
 
 const TEMPLATES = {
@@ -371,7 +394,7 @@ const TEMPLATES = {
 };
 
 /* ---------- estado ---------- */
-let S = {custom:[], routines:[], sessions:[], active:null, meta:{lastBackup:0,lastBackupCount:0}};
+let S = {custom:[], routines:[], sessions:[], cardio:[], active:null, meta:{lastBackup:0,lastBackupCount:0}};
 let view = "treinar";
 let editingId = null;
 let picker = null;          // {mode:"routine"|"workout"|"swap", q, muscle}
@@ -388,6 +411,9 @@ let rotinaAberta = null;            // rotina expandida na tela inicial
 let histLimite = 15;                // quantos treinos o histórico desenha por vez
 let exEdit = null;                  // exercício criado sendo editado
 let resumoEx = null;                // exercício que acabou de ser concluído
+let formCardio = null;              // registro de cardio sendo criado ou editado
+let cardioLimite = 15;
+let cardioBusca = "", cardioTodas = false;
 const mostrarResumo = () => !(S.meta && S.meta.semResumo);
 const modo = () => (S.meta && S.meta.modo) || "foco";
 let swEstado = null;   // estado do modo offline, quando publicado
@@ -444,12 +470,13 @@ async function load(){
       if(!Array.isArray(S.custom)) S.custom=[];
       if(!Array.isArray(S.routines)) S.routines=[];
       if(!Array.isArray(S.sessions)) S.sessions=[];
+      if(!Array.isArray(S.cardio)) S.cardio=[];
       if(!S.meta) S.meta={lastBackup:0,lastBackupCount:0};
     }
   } catch(e){
     try{  // se o armazenamento principal falhou, tenta a cópia espelho
       const v = window.localStorage.getItem(KEY+":copia") || window.localStorage.getItem(KEY);
-      if(v){ const d=JSON.parse(v); S=Object.assign({custom:[],routines:[],sessions:[],active:null}, d); }
+      if(v){ const d=JSON.parse(v); S=Object.assign({custom:[],routines:[],sessions:[],cardio:[],active:null}, d); }
     }catch(e2){ /* primeira execução: sem dados salvos */ }
   }
   if(!S.meta) S.meta={lastBackup:0, lastBackupCount:0};
@@ -459,6 +486,7 @@ async function load(){
 /* Ajusta dados gravados por versões anteriores do app. Roda em toda abertura
    e também depois de restaurar um backup antigo. */
 function migrar(){
+  if(!Array.isArray(S.cardio)) S.cardio=[];
   const arrumaSets = en => {
     if(!en || !Array.isArray(en.sets)) return;
     if(en.rest===undefined) en.rest=90;
@@ -563,6 +591,29 @@ function monthStats(ts){
           series:ss.reduce((a,x)=>a+doneSets(x.entries),0)};
 }
 
+function cardioDoDia(ts){
+  const d=new Date(ts), ini=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
+  return S.cardio.filter(c => c.t>=ini && c.t<ini+864e5);
+}
+function ritmo(c){
+  if(!(c.km>0) || !(c.min>0)) return "";
+  const segPorKm = (c.min*60)/c.km;
+  return Math.floor(segPorKm/60)+":"+String(Math.round(segPorKm%60)).padStart(2,"0")+" /km";
+}
+function resumoCardio(c){
+  const partes=[c.min+" min"];
+  if(c.km>0) partes.push(fmt(c.km)+" km");
+  if(c.km>0 && c.min>0) partes.push(ritmo(c));
+  if(c.intensidade) partes.push(c.intensidade.toLowerCase());
+  return partes.join(" · ");
+}
+function semanaCardio(){
+  const now=new Date(); const day=(now.getDay()+6)%7;
+  const mon=new Date(now.getFullYear(),now.getMonth(),now.getDate()-day).getTime();
+  const ss=S.cardio.filter(c=>c.t>=mon);
+  return {count:ss.length, min:ss.reduce((a,c)=>a+(+c.min||0),0)};
+}
+
 function proximoTreino(){
   if(!S.routines.length) return null;
   for(let i=S.sessions.length-1;i>=0;i--){
@@ -634,7 +685,7 @@ function renderTop(){
       <button class="btn primary" data-act="finish">Concluir</button></div>`;
   } else {
     const titles={treinar:"Treino",historico:"Histórico",progresso:"Progresso",
-                  edit:"Editar treino",config:"Configurações",calendario:"Calendário"};
+                  edit:"Editar treino",config:"Configurações",calendario:"Calendário",cardio:"Cardio"};
     html = `<div class="toprow">`;
     if(view==="edit") html += `<button class="btn ghost sm" data-act="voltarEdit" aria-label="Voltar"
         style="font-size:20px;line-height:1;padding:2px 8px 2px 0">←</button>`;
@@ -676,6 +727,12 @@ function vTreinar(){
       <p class="muted" style="font-size:13px;margin-top:4px">${desde} treinos desde o último backup. Se este navegador limpar os dados, não há como recuperar.</p>
       <div class="row" style="gap:6px;margin-top:10px"><button class="btn sm primary" data-act="copyBackup">Copiar backup</button>
       <button class="btn sm" data-act="export">Baixar arquivo</button></div></div>`;
+  }
+  const hojeCardio=cardioDoDia(Date.now());
+  if(hojeCardio.length){
+    h += `<div class="card stack" style="padding:11px 14px;border-left:3px solid var(--green)">
+      <div class="between"><span class="ellip grow">Cardio hoje: ${hojeCardio.map(c=>esc(c.tipo)).join(", ")}</span>
+        <span class="muted tnum" style="font-size:13px">${hojeCardio.reduce((a,c)=>a+(+c.min||0),0)} min</span></div></div>`;
   }
   const wm=weekByMuscle();
   if(wm.length){
@@ -986,7 +1043,7 @@ function importFromText(txt){
     const j=JSON.parse(txt);
     const d=(j && j.data) ? j.data : j;
     if(!d || !Array.isArray(d.sessions) || !Array.isArray(d.routines)) throw new Error("formato");
-    S=Object.assign({custom:[],routines:[],sessions:[],active:null,meta:{lastBackup:0,lastBackupCount:0}}, d);
+    S=Object.assign({custom:[],routines:[],sessions:[],cardio:[],active:null,meta:{lastBackup:0,lastBackupCount:0}}, d);
     migrar(); flush(); sheetText=null; render();
     toast("Backup restaurado: "+S.sessions.length+" treinos.");
     return true;
@@ -1098,10 +1155,15 @@ function vCalendario(){
   const dias=new Date(ano,mes+1,0).getDate();
   const hoje=new Date(); const ehMesAtual = hoje.getFullYear()===ano && hoje.getMonth()===mes;
 
-  const porDia={};
+  const porDia={}, cardioPorDia={};
   sessoesDoMes(base.getTime()).forEach(se => {
     const d=new Date(se.end||se.start).getDate(); (porDia[d]=porDia[d]||[]).push(se);
   });
+  S.cardio.forEach(c => {
+    const dt=new Date(c.t);
+    if(dt.getFullYear()===ano && dt.getMonth()===mes) (cardioPorDia[dt.getDate()]=cardioPorDia[dt.getDate()]||[]).push(c);
+  });
+  const minCardio = Object.values(cardioPorDia).flat().reduce((a,c)=>a+(+c.min||0),0);
   const st=monthStats(base.getTime());
   const nome=base.toLocaleDateString("pt-BR",{month:"long",year:"numeric"});
 
@@ -1113,32 +1175,44 @@ function vCalendario(){
     <div class="stats stack">
       <div class="stat"><b>${st.count}</b><span>treinos</span></div>
       <div class="stat"><b>${st.series}</b><span>séries</span></div>
-      <div class="stat"><b>${ton(st.vol)}</b><span>volume</span></div>
+      <div class="stat"><b>${minCardio}</b><span>min de cardio</span></div>
     </div>
     <div class="card stack" style="padding:12px 10px">
       <div class="cal">${["dom","seg","ter","qua","qui","sex","sáb"].map(d=>`<span class="wd">${d}</span>`).join("")}</div>
       <div class="cal" style="margin-top:2px">
         ${Array.from({length:primeiro},()=>`<span class="dia vazio"></span>`).join("")}
         ${Array.from({length:dias},(_,i)=>{
-          const d=i+1, tem=!!porDia[d];
+          const d=i+1, tem=!!porDia[d], card=!!cardioPorDia[d];
           const eHoje = ehMesAtual && hoje.getDate()===d;
-          return `<button class="dia ${tem?"treino":""} ${calDia===d?"sel":""} ${eHoje?"hoje":""}"
-            data-act="dia" data-d="${d}" ${tem?"":"disabled"}
-            aria-label="${d} ${tem?"— "+porDia[d].length+" treino(s)":"— sem treino"}">${d}</button>`;
+          return `<button class="dia ${tem?"treino":""} ${card?"cardio":""} ${calDia===d?"sel":""} ${eHoje?"hoje":""}"
+            data-act="dia" data-d="${d}" ${(tem||card)?"":"disabled"}
+            aria-label="${d}${tem?" — "+porDia[d].length+" treino(s)":""}${card?" — "+cardioPorDia[d].length+" cardio(s)":""}${(tem||card)?"":" — sem atividade"}">${d}</button>`;
         }).join("")}
       </div>
     </div>`;
 
   const doDia = calDia ? (porDia[calDia]||[]) : [];
+  const cardioDia = calDia ? (cardioPorDia[calDia]||[]) : [];
   if(calDia){
     h += `<h2 class="stack">${calDia} de ${base.toLocaleDateString("pt-BR",{month:"long"})}</h2>`;
-    if(!doDia.length){
-      h += `<div class="empty">Nenhum treino nesse dia.</div>`;
-    } else doDia.forEach(se => { h += cardSessao(se, openId===se.id); });
-  } else if(st.count){
-    h += `<p class="muted stack" style="font-size:13px;text-align:center">Toque num dia destacado para ver o treino.</p>`;
+    if(!doDia.length && !cardioDia.length){
+      h += `<div class="empty">Nenhuma atividade nesse dia.</div>`;
+    }
+    doDia.forEach(se => { h += cardSessao(se, openId===se.id); });
+    cardioDia.forEach(c => {
+      h += `<div class="card stack" style="padding:12px 14px;border-left:3px solid var(--green)">
+        <div class="between">
+          <div class="grow"><h3 class="ellip">${esc(c.tipo)}</h3>
+            <p class="muted" style="font-size:13px">Cardio · ${esc(resumoCardio(c))}</p>
+            ${c.nota?`<p class="muted" style="font-size:12.5px;font-style:italic;margin-top:2px">${esc(c.nota)}</p>`:""}
+          </div>
+          <button class="btn sm" data-act="editCardio" data-id="${c.id}">Editar</button>
+        </div></div>`;
+    });
+  } else if(st.count || minCardio){
+    h += `<p class="muted stack" style="font-size:13px;text-align:center">Toque num dia destacado para ver a atividade.</p>`;
   } else {
-    h += `<div class="empty">Nenhum treino registrado neste mês.</div>`;
+    h += `<div class="empty">Nenhuma atividade registrada neste mês.</div>`;
   }
   return h;
 }
@@ -1160,6 +1234,36 @@ function meusExerciciosCard(){
             <span class="muted" style="font-size:12px">${u.treinos? u.treinos+" treino"+(u.treinos===1?"":"s") : "nunca usado"}</span></div>
           <span class="tag mus">${esc(ex.muscle)}</span></div>`; }).join("")}
     </div></div>`;
+}
+
+function vCardio(){
+  const sem=semanaCardio();
+  let h = `<div class="stats dois stack">
+      <div class="stat"><b>${sem.count}</b><span>na semana</span></div>
+      <div class="stat"><b>${sem.min}</b><span>minutos na semana</span></div>
+    </div>
+    <div class="stack"><button class="btn wide primary" data-act="novoCardio">+ Registrar cardio</button></div>`;
+
+  if(!S.cardio.length){
+    return h + `<div class="empty">Nenhum cardio registrado ainda.<br>Esteira, bike, corrida — o que você fizer entra aqui e aparece no calendário.</div>`;
+  }
+  const lista=S.cardio.slice().sort((a,b)=>b.t-a.t).slice(0, cardioLimite);
+  h += `<h2 class="stack">Registros</h2>`;
+  lista.forEach(c => {
+    h += `<div class="card stack" style="padding:12px 14px">
+      <div class="between">
+        <div class="grow" data-act="editCardio" data-id="${c.id}" role="button" tabindex="0" style="cursor:pointer">
+          <h3 class="ellip">${esc(c.tipo)}</h3>
+          <p class="muted" style="font-size:13px">${dateLabel(c.t)} · ${esc(resumoCardio(c))}</p>
+          ${c.nota?`<p class="muted" style="font-size:12.5px;font-style:italic;margin-top:2px">${esc(c.nota)}</p>`:""}
+        </div>
+        <button class="btn sm" data-act="editCardio" data-id="${c.id}">Editar</button>
+      </div></div>`;
+  });
+  if(S.cardio.length>lista.length){
+    h += `<div class="stack"><button class="btn wide" data-act="maisCardio">Ver mais (${S.cardio.length-lista.length} restantes)</button></div>`;
+  }
+  return h;
 }
 
 function vConfig(){
@@ -1459,6 +1563,65 @@ function renderFloat(){
         </div>
       </div></div>`);
   }
+  if(formCardio){
+    const c=formCardio;
+    const data=new Date(c.t||Date.now());
+    const iso=new Date(data.getTime()-data.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    host.insertAdjacentHTML("beforeend", `<div class="overlay" data-act="fecharCardio"><div class="sheet" data-stop="1">
+      <header><h2>${c.id?"Editar cardio":"Registrar cardio"}</h2><button class="btn sm" data-act="fecharCardio">Fechar</button></header>
+      <div class="body">
+        <label class="muted" style="font-size:12.5px">Modalidade</label>
+        <div class="row" style="gap:6px;margin-top:8px;align-items:center">
+          <span class="chip on" style="cursor:default">${esc(c.tipo||"—")}</span>
+          <input class="field grow" id="cBusca" style="padding:8px 10px;font-size:14px"
+            value="${esc(cardioBusca)}" placeholder="Buscar modalidade" autocomplete="off">
+        </div>
+        ${(() => {
+          const q = cardioBusca.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+          const casa = n => n.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes(q);
+          if(q){
+            const achados = CARDIOS.filter(x=>casa(x[0]));
+            return achados.length
+              ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px">
+                  ${achados.map(x=>`<button class="chip ${c.tipo===x[0]?"on":""}" data-act="cardioTipo" data-v="${esc(x[0])}">${esc(x[0])}</button>`).join("")}
+                 </div>`
+              : `<p class="muted" style="font-size:13px;margin-top:10px">Nada encontrado. Use “Outro” e descreva na anotação.</p>`;
+          }
+          const recentes = [...new Set(S.cardio.slice().sort((a,b)=>b.t-a.t).map(x=>x.tipo))].slice(0,6);
+          let bloco = "";
+          if(recentes.length){
+            bloco += `<p class="muted" style="font-size:12px;margin-top:12px">Suas modalidades</p>
+              <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">
+                ${recentes.map(m=>`<button class="chip ${c.tipo===m?"on":""}" data-act="cardioTipo" data-v="${esc(m)}">${esc(m)}</button>`).join("")}
+              </div>`;
+          }
+          if(!cardioTodas){
+            return bloco + `<button class="btn wide sm" style="margin-top:12px" data-act="cardioTodas">Ver todas as modalidades</button>`;
+          }
+          return bloco + CARDIO_CATS.map(cat=>`
+            <p class="muted" style="font-size:12px;margin-top:12px">${cat}</p>
+            <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">
+              ${CARDIOS.filter(x=>x[1]===cat).map(x=>`<button class="chip ${c.tipo===x[0]?"on":""}" data-act="cardioTipo" data-v="${esc(x[0])}">${esc(x[0])}</button>`).join("")}
+            </div>`).join("");
+        })()}
+        <div class="row" style="gap:8px;margin-top:16px">
+          <label class="muted grow" style="font-size:12.5px">Duração (min)
+            <input class="field" style="margin-top:4px" type="number" inputmode="numeric" min="1" max="600" id="cMin" value="${c.min||""}" placeholder="30"></label>
+          <label class="muted grow" style="font-size:12.5px">Distância (km)
+            <input class="field" style="margin-top:4px" inputmode="decimal" id="cKm" value="${c.km||""}" placeholder="opcional"></label>
+        </div>
+        <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Intensidade</label>
+        <div class="row" style="gap:6px;margin-top:8px">
+          ${INTENSIDADES.map(i=>`<button class="chip ${c.intensidade===i?"on":""}" data-act="cardioInt" data-v="${i}">${i}</button>`).join("")}
+        </div>
+        <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Data
+          <input class="field" style="margin-top:4px" type="date" id="cData" value="${iso}"></label>
+        <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Anotação
+          <input class="field" style="margin-top:4px" id="cNota" value="${esc(c.nota||"")}" placeholder="Inclinação, esteira 3, sensação..."></label>
+        <button class="btn wide primary stack" data-act="salvarCardio">${c.id?"Salvar":"Registrar"}</button>
+        ${c.id?`<button class="btn wide danger" style="margin-top:8px" data-act="apagarCardio">Apagar registro</button>`:""}
+      </div></div></div>`);
+  }
   if(dialogo){
     host.insertAdjacentHTML("beforeend", `<div class="overlay centro" data-act="dlgNao">
       <div class="dialogo" data-stop="1" role="alertdialog" aria-modal="true" aria-label="${esc(dialogo.titulo)}">
@@ -1489,19 +1652,20 @@ window.addEventListener("online", renderOffline);
 window.addEventListener("offline", renderOffline);
 
 function renderNav(){
-  const items=[["treinar","Treino"],["historico","Histórico"],["progresso","Progresso"]];
+  const items=[["treinar","Treino"],["cardio","Cardio"],["historico","Histórico"],["progresso","Progresso"]];
   $("#nav").innerHTML = items.map(([k,l]) =>
     `<button class="${view===k||(view==="edit"&&k==="treinar")||((view==="config"||view==="calendario")&&k===voltarPara)?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}">${l}</button>`).join("");
 }
 
 function render(){
-  if(!["treinar","edit","historico","progresso","config","calendario"].includes(view)) view="treinar";
+  if(!["treinar","edit","historico","progresso","config","calendario","cardio"].includes(view)) view="treinar";
   const act=document.activeElement;
   const fk = act && act.dataset ? act.dataset.k : null;
   renderTop();
   const body = view==="treinar" ? vTreinar() : view==="edit" ? vEdit() : view==="historico" ? vHistorico() :
                view==="config" ? vConfig() :
-               view==="calendario" ? vCalendario() : vProgresso();
+               view==="calendario" ? vCalendario() :
+               view==="cardio" ? vCardio() : vProgresso();
   $("#view").innerHTML = body;
   renderNav(); renderFloat(); renderOffline();
   if(fk){ const el=document.querySelector(`[data-k="${fk}"]`);
@@ -1551,6 +1715,19 @@ function applyTemplate(k){
 
 /* Sai do editor guardando o que foi feito. Um treino recém-criado, sem
    exercícios e ainda com o nome padrão, é descartado em vez de virar entulho. */
+function lerFormCardio(){
+  if(!formCardio) return;
+  const g=id=>document.getElementById(id);
+  if(g("cMin")) formCardio.min=g("cMin").value;
+  if(g("cKm")) formCardio.km=g("cKm").value;
+  if(g("cNota")) formCardio.nota=g("cNota").value;
+  if(g("cData") && g("cData").value){
+    const [a,m,d]=g("cData").value.split("-").map(Number);
+    const antiga=new Date(formCardio.t||Date.now());
+    formCardio.t=new Date(a, m-1, d, antiga.getHours(), antiga.getMinutes()).getTime();
+  }
+}
+
 function sairDoEditor(){
   syncRoutineName();
   const r = S.routines.find(x=>x.id===editingId);
@@ -1593,6 +1770,35 @@ document.addEventListener("click", ev => {
       else window.scrollTo(0,0);
       break; }
     case "semResumo": S.meta=Object.assign({},S.meta||{},{semResumo:t.dataset.v==="1"}); save(); render(); break;
+    case "novoCardio": { const ultimo=S.cardio.slice().sort((a,b)=>b.t-a.t)[0];
+      formCardio={tipo: ultimo?ultimo.tipo:"Esteira", min:"", km:"", intensidade:"", nota:"", t:Date.now()};
+      cardioBusca=""; cardioTodas=false; renderFloat(); break; }
+    case "editCardio": { const c=S.cardio.find(x=>x.id===id); if(!c) break;
+      formCardio=Object.assign({}, c); cardioBusca=""; cardioTodas=false; renderFloat(); break; }
+    case "fecharCardio": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
+      formCardio=null; renderFloat(); break;
+    case "cardioTipo": lerFormCardio(); formCardio.tipo=t.dataset.v; cardioBusca=""; renderFloat(); break;
+    case "cardioTodas": lerFormCardio(); cardioTodas=true; renderFloat(); break;
+    case "cardioInt": lerFormCardio(); formCardio.intensidade = formCardio.intensidade===t.dataset.v ? "" : t.dataset.v;
+      renderFloat(); break;
+    case "salvarCardio": {
+      lerFormCardio();
+      const bruto=parseInt(formCardio.min,10);
+      if(!(bruto>0)){ toast("Informe a duração em minutos."); break; }
+      const min=Math.min(600, bruto);
+      const reg={id: formCardio.id || uid(), tipo: formCardio.tipo || "Outro", min,
+                 km: Math.max(0, num(formCardio.km)), intensidade: formCardio.intensidade||"",
+                 nota: (formCardio.nota||"").slice(0,120), t: formCardio.t};
+      const i=S.cardio.findIndex(x=>x.id===reg.id);
+      if(i>=0) S.cardio[i]=reg; else S.cardio.push(reg);
+      formCardio=null; save(); render(); toast(i>=0?"Cardio atualizado.":"Cardio registrado."); break; }
+    case "apagarCardio": { const id0=formCardio && formCardio.id; if(!id0) break;
+      const c=S.cardio.find(x=>x.id===id0); formCardio=null; renderFloat();
+      pedirConfirmacao("Apagar este cardio?",
+        `${c.tipo} de ${dateLabel(c.t)} sai da lista e do calendário.`, "Apagar",
+        () => { S.cardio=S.cardio.filter(x=>x.id!==id0); save(); render(); toast("Cardio apagado."); });
+      break; }
+    case "maisCardio": cardioLimite += 25; render(); break;
     case "editEx": exEdit=id; renderFloat(); break;
     case "fecharEx": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       exEdit=null; renderFloat(); break;
@@ -1756,6 +1962,8 @@ document.addEventListener("click", ev => {
 document.addEventListener("input", ev => {
   const el=ev.target;
   if(el.id==="pq"){ picker.q=el.value; renderFloat(); const q=$("#pq"); if(q){ q.focus(); q.setSelectionRange(q.value.length,q.value.length);} return; }
+  if(el.id==="cBusca"){ lerFormCardio(); cardioBusca=el.value; renderFloat();
+    const b=$("#cBusca"); if(b){ b.focus(); b.setSelectionRange(b.value.length,b.value.length); } return; }
   if(el.dataset.f && el.dataset.e!==undefined && el.dataset.s!==undefined && S.active){
     if(+el.dataset.e !== ultimoMexido) ultimoMexido = +el.dataset.e;
     const st=S.active.entries[+el.dataset.e].sets[+el.dataset.s];
@@ -1788,7 +1996,7 @@ document.addEventListener("keydown", ev => {
   if((ev.key==="Enter"||ev.key===" ") && ev.target.getAttribute && ev.target.getAttribute("role")==="button"){
     ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); return;
   }
-  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit||resumoEx!==null)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; resumoEx=null; renderFloat(); }
+  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit||resumoEx!==null||formCardio)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; resumoEx=null; formCardio=null; renderFloat(); }
   if(S.active && naSessao && modo()==="foco" && !picker && !exMenu && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
     if(ev.key==="ArrowLeft" && focoIdx>0){ focoIdx--; render(); }
     if(ev.key==="ArrowRight" && focoIdx<S.active.entries.length-1){ focoIdx++; render(); }
@@ -1948,7 +2156,7 @@ document.addEventListener("visibilitychange", () => { if(document.visibilityStat
 
 load().then(() => {
   const aba = S.meta && S.meta.aba;
-  if(["treinar","historico","progresso"].includes(aba)) view = aba;
+  if(["treinar","cardio","historico","progresso"].includes(aba)) view = aba;
   aplicarTema(); render(); if(S.active) wake(true);
 });
 })();
