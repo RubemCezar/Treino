@@ -680,7 +680,9 @@ function renderTop(){
   if(S.active && naSessao && view==="treinar"){
     const v=volume(S.active.entries), n=doneSets(S.active.entries);
     html = `<div class="toprow">
-      <div class="grow"><h1 class="ellip">${esc(S.active.name)}</h1>
+      <button class="btn ghost sm" data-act="voltarTreino" aria-label="Voltar sem finalizar o treino"
+        style="font-size:20px;line-height:1;padding:2px 8px 2px 0">←</button>
+      <div class="grow" style="min-width:0"><h1 class="ellip">${esc(S.active.name)}</h1>
         <p class="muted tnum" style="font-size:13.5px"><span id="elapsed">${dur(Date.now()-S.active.start)}</span> · ${n} série${n===1?"":"s"}${v>0?" · "+ton(v):""}</p></div>
       <button class="btn primary" data-act="finish">Concluir</button></div>`;
   } else {
@@ -703,49 +705,15 @@ function vTreinar(){
   if(S.active && naSessao) return vSession();
   const w=weekStats();
   const last=S.sessions.slice(-3).reverse();
-  let h = `<div class="stats dois stack">
+
+  // faixa compacta de números no topo
+  let h = `<div class="stats dois stack" style="margin-top:0">
       <div class="stat"><b>${w.count}</b><span>treinos na semana</span></div>
       <button class="stat" data-act="abrirCal" aria-label="Ver calendário de treinos" type="button">
         <b>${monthStats(Date.now()).count}</b><span>treinos no mês ›</span></button>
     </div>`;
 
-  if(S.active){
-    const feitas=doneSets(S.active.entries);
-    h += `<div class="card stack" style="border-left:3px solid var(--amber)">
-      <div class="between">
-        <div class="grow"><h3 class="ellip">${esc(S.active.name)}</h3>
-          <p class="muted tnum" style="font-size:13px">Em andamento · ${dur(Date.now()-S.active.start)} · ${feitas} série${feitas===1?"":"s"}</p></div>
-        <button class="btn primary" data-act="retomar">Continuar</button>
-      </div>
-      <div style="text-align:center;margin-top:8px"><button class="btn ghost danger sm" data-act="cancelWorkout">Descartar treino</button></div>
-    </div>`;
-  }
-  const desde = S.sessions.length - ((S.meta&&S.meta.lastBackupCount)||0);
-  if(S.sessions.length>=3 && desde>=5){
-    h += `<div class="card stack" style="border-left:3px solid var(--amber)">
-      <h3>Guarde uma cópia dos seus dados</h3>
-      <p class="muted" style="font-size:13px;margin-top:4px">${desde} treinos desde o último backup. Se este navegador limpar os dados, não há como recuperar.</p>
-      <div class="row" style="gap:6px;margin-top:10px"><button class="btn sm primary" data-act="copyBackup">Copiar backup</button>
-      <button class="btn sm" data-act="export">Baixar arquivo</button></div></div>`;
-  }
-  const hojeCardio=cardioDoDia(Date.now());
-  if(hojeCardio.length){
-    h += `<div class="card stack" style="padding:11px 14px;border-left:3px solid var(--green)">
-      <div class="between"><span class="ellip grow">Cardio hoje: ${hojeCardio.map(c=>esc(c.tipo)).join(", ")}</span>
-        <span class="muted tnum" style="font-size:13px">${hojeCardio.reduce((a,c)=>a+(+c.min||0),0)} min</span></div></div>`;
-  }
-  const wm=weekByMuscle();
-  if(wm.length){
-    const mx=Math.max(...wm.map(x=>x[1]));
-    h += `<div class="card stack"><div class="between"><h3>Séries por grupo nesta semana</h3></div>
-      <div style="margin-top:10px">${wm.map(([g,n])=>`
-        <div class="row" style="gap:8px;padding:3px 0">
-          <span style="width:64px;font-size:13px" class="muted">${esc(g)}</span>
-          <span style="flex:1;height:8px;background:var(--track);border-radius:99px;overflow:hidden;display:block">
-            <span style="display:block;height:100%;width:${Math.round(n/mx*100)}%;background:var(--blue);border-radius:99px"></span></span>
-          <span class="tnum" style="width:22px;text-align:right;font-size:13px">${n}</span>
-        </div>`).join("")}</div></div>`;
-  }
+  // "Meus treinos" logo abaixo: é o que se usa a cada abertura do app
   if(!S.routines.length){
     h += `<div class="card stack"><h3>Monte seu treino</h3>
       <p class="muted" style="margin-top:4px">Escolha um modelo pronto e ajuste depois, ou monte a sua do zero.</p>
@@ -788,6 +756,34 @@ function vTreinar(){
     h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Novo treino</button></div>`;
   }
 
+  // depois, o resto do panorama
+  const desde = S.sessions.length - ((S.meta&&S.meta.lastBackupCount)||0);
+  if(S.sessions.length>=3 && desde>=5){
+    h += `<div class="card stack" style="border-left:3px solid var(--amber)">
+      <h3>Guarde uma cópia dos seus dados</h3>
+      <p class="muted" style="font-size:13px;margin-top:4px">${desde} treinos desde o último backup. Se este navegador limpar os dados, não há como recuperar.</p>
+      <div class="row" style="gap:6px;margin-top:10px"><button class="btn sm primary" data-act="copyBackup">Copiar backup</button>
+      <button class="btn sm" data-act="export">Baixar arquivo</button></div></div>`;
+  }
+  const hojeCardio=cardioDoDia(Date.now());
+  if(hojeCardio.length){
+    h += `<div class="card stack" style="padding:11px 14px;border-left:3px solid var(--green)">
+      <div class="between"><span class="ellip grow">Cardio hoje: ${hojeCardio.map(c=>esc(c.tipo)).join(", ")}</span>
+        <span class="muted tnum" style="font-size:13px">${hojeCardio.reduce((a,c)=>a+(+c.min||0),0)} min</span></div></div>`;
+  }
+  const wm=weekByMuscle();
+  if(wm.length){
+    const mx=Math.max(...wm.map(x=>x[1]));
+    h += `<div class="card stack"><div class="between"><h3>Séries por grupo nesta semana</h3></div>
+      <div style="margin-top:10px">${wm.map(([g,n])=>`
+        <div class="row" style="gap:8px;padding:3px 0">
+          <span style="width:64px;font-size:13px" class="muted">${esc(g)}</span>
+          <span style="flex:1;height:8px;background:var(--track);border-radius:99px;overflow:hidden;display:block">
+            <span style="display:block;height:100%;width:${Math.round(n/mx*100)}%;background:var(--blue);border-radius:99px"></span></span>
+          <span class="tnum" style="width:22px;text-align:right;font-size:13px">${n}</span>
+        </div>`).join("")}</div></div>`;
+  }
+
   if(last.length){
     h += `<h2 class="stack">Feitos recentemente</h2>`;
     last.forEach(se => {
@@ -802,6 +798,18 @@ function vTreinar(){
     });
   }
   return h;
+}
+
+/* Índice do próximo exercício com série pendente, a partir de `depois` e dando
+   a volta na lista. null quando não sobra nada — é o único caso em que "Concluir
+   treino" deve aparecer no resumo. */
+function proximoPendente(depois){
+  const n=S.active.entries.length;
+  for(let k=1;k<=n;k++){
+    const i=(depois+k)%n;
+    if(S.active.entries[i].sets.some(x=>!x.done)) return i;
+  }
+  return null;
 }
 
 function metricasEx(sets){
@@ -926,6 +934,18 @@ function vSessionFoco(){
     <div class="stack"><button class="btn wide" data-act="pickWorkout">+ Adicionar exercício</button></div>
     <div class="stack" style="text-align:center"><button class="btn ghost danger" data-act="cancelWorkout">Descartar treino</button></div>`;
   return h;
+}
+
+/* Índice do próximo exercício com série pendente, a partir de `depois` e dando
+   a volta na lista. null quando não sobra nada — é o único caso em que "Concluir
+   treino" deve aparecer no resumo. */
+function proximoPendente(depois){
+  const n=S.active.entries.length;
+  for(let k=1;k<=n;k++){
+    const i=(depois+k)%n;
+    if(S.active.entries[i].sets.some(x=>!x.done)) return i;
+  }
+  return null;
 }
 
 function metricasEx(sets){
@@ -1535,7 +1555,8 @@ function renderFloat(){
   if(resumoEx!==null && S.active && S.active.entries[resumoEx]){
     const ei=resumoEx, en=S.active.entries[ei], ex=exById(en.exId);
     const {agora, antes} = comparativoEx(en.exId, en.sets);
-    const ultimo = ei>=S.active.entries.length-1;
+    const pendente = proximoPendente(ei);
+    const tudoFeito = pendente===null;
     const linha = (rotulo, val, ant, unidade, casas) => {
       const d = ant===null||ant===undefined ? null : val-ant;
       const fmtn = n => casas ? fmt(n) : Math.round(n);
@@ -1559,7 +1580,7 @@ function renderFloat(){
         </div>
         <div class="row" style="gap:8px;margin-top:18px">
           <button class="btn" data-act="fecharResumo">Ficar aqui</button>
-          <button class="btn primary grow" data-act="${ultimo?"finish":"proxExercicio"}">${ultimo?"Concluir treino":"Próximo exercício"}</button>
+          <button class="btn primary grow" data-act="${tudoFeito?"finish":"proxExercicio"}">${tudoFeito?"Concluir treino":"Próximo exercício"}</button>
         </div>
       </div></div>`);
   }
@@ -1598,7 +1619,8 @@ function renderFloat(){
           if(!cardioTodas){
             return bloco + `<button class="btn wide sm" style="margin-top:12px" data-act="cardioTodas">Ver todas as modalidades</button>`;
           }
-          return bloco + CARDIO_CATS.map(cat=>`
+          return bloco + `<button class="btn wide sm" style="margin-top:12px" data-act="cardioMenos">Mostrar menos</button>` +
+            CARDIO_CATS.map(cat=>`
             <p class="muted" style="font-size:12px;margin-top:12px">${cat}</p>
             <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">
               ${CARDIOS.filter(x=>x[1]===cat).map(x=>`<button class="chip ${c.tipo===x[0]?"on":""}" data-act="cardioTipo" data-v="${esc(x[0])}">${esc(x[0])}</button>`).join("")}
@@ -1763,7 +1785,8 @@ document.addEventListener("click", ev => {
     case "fecharResumo": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       resumoEx=null; renderFloat(); break;
     case "proxExercicio": {
-      const alvo=Math.min(S.active.entries.length-1, (resumoEx===null?focoIdx:resumoEx)+1);
+      const de = resumoEx===null?focoIdx:resumoEx;
+      const alvo = proximoPendente(de) ?? Math.min(S.active.entries.length-1, de+1);
       resumoEx=null; focoIdx=alvo; dobrado.delete(alvo); render();
       if(modo()!=="foco"){ const el=document.querySelectorAll(".ex")[alvo];
         if(el && el.scrollIntoView) el.scrollIntoView({block:"start", behavior:"smooth"}); }
@@ -1779,6 +1802,7 @@ document.addEventListener("click", ev => {
       formCardio=null; renderFloat(); break;
     case "cardioTipo": lerFormCardio(); formCardio.tipo=t.dataset.v; cardioBusca=""; renderFloat(); break;
     case "cardioTodas": lerFormCardio(); cardioTodas=true; renderFloat(); break;
+    case "cardioMenos": lerFormCardio(); cardioTodas=false; renderFloat(); break;
     case "cardioInt": lerFormCardio(); formCardio.intensidade = formCardio.intensidade===t.dataset.v ? "" : t.dataset.v;
       renderFloat(); break;
     case "salvarCardio": {
@@ -1840,6 +1864,7 @@ document.addEventListener("click", ev => {
     case "editRoutine": editingId=id; view="edit"; render(); break;
     case "saveRoutine": if(sairDoEditor()) toast("Treino atualizado."); break;
     case "voltarEdit": sairDoEditor(); break;
+    case "voltarTreino": naSessao=false; render(); break;
     case "delRoutine": { const r=S.routines.find(x=>x.id===id); if(!r) break;
       pedirConfirmacao("Apagar este treino salvo?",
         `“${r.name}” sai dos seus treinos. Os que você já fez continuam no histórico.`,
@@ -1849,13 +1874,17 @@ document.addEventListener("click", ev => {
     case "rmItem": { const r=S.routines.find(x=>x.id===editingId); syncRoutineName(); r.items.splice(i,1); save(); render(); break; }
     case "moveEx": { const r=S.routines.find(x=>x.id===editingId); syncRoutineName(); const d=+t.dataset.d;
       const [it]=r.items.splice(i,1); r.items.splice(i+d,0,it); save(); render(); break; }
-    case "pickRoutine": syncRoutineName(); picker={mode:"routine",q:"",muscle:null}; renderFloat(); break;
+    case "pickRoutine": if(!S.routines.find(x=>x.id===editingId)) break;
+      syncRoutineName(); picker={mode:"routine",q:"",muscle:null}; renderFloat(); break;
     case "pickWorkout": picker={mode:"workout",q:"",muscle:null}; renderFloat(); break;
     case "closePicker": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break; picker=null; renderFloat(); break;
     case "mus": picker.muscle=t.dataset.m||null; renderFloat(); break;
     case "choose":
       if((picker.mode==="workout"||picker.mode==="swap") && !S.active){
         picker=null; render(); toast("O treino foi encerrado."); break;
+      }
+      if(picker.mode==="routine" && !S.routines.find(x=>x.id===editingId)){
+        picker=null; render(); toast("O treino que você editava não existe mais."); break;
       }
       if(picker.mode==="swap"){ S.active.entries[picker.i].exId=id; }
       else if(picker.mode==="routine"){ const r=S.routines.find(x=>x.id===editingId); r.items.push({exId:id,sets:3,reps:"8-12",rest:90}); }
@@ -1867,6 +1896,9 @@ document.addEventListener("click", ev => {
     case "novoGrupo": {
       if((picker.mode==="workout"||picker.mode==="swap") && !S.active){
         picker=null; render(); toast("O treino foi encerrado."); break;
+      }
+      if(picker.mode==="routine" && !S.routines.find(x=>x.id===editingId)){
+        picker=null; render(); toast("O treino que você editava não existe mais."); break;
       }
       const ex={id:"c_"+slug(picker.novo)+"_"+uid(), name:picker.novo, muscle:t.dataset.m};
       S.custom.push(ex);
