@@ -493,6 +493,7 @@ function migrar(){
     if(en.reps===undefined) en.reps="";
     if(en.note===undefined) en.note="";
     en.sets.forEach(st => {
+      if(!st.tipo){ st.tipo = st.warm ? "A" : "T"; delete st.warm; }
       if(typeof st.sug === "object" && st.sug !== null) return;   // já é o formato novo
       const tinha = st.sug === true && !st.done && (st.w!=="" || st.r!=="");
       st.sug = tinha ? {w: fmt(num(st.w)), r: String(num(st.r))} : null;
@@ -521,6 +522,15 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">"
 const num = v => { const n = parseFloat(String(v).replace(",",".")); return isFinite(n) ? n : 0; };
 const fmt = n => (Math.round(n*10)/10).toString().replace(".",",");
 // padrão do app: repetições × carga  (ex.: 12×42,5)
+/* Tipo da série: T = válida (conta), A = aquecimento, P = preparatória/feeder.
+   Só as válidas entram em volume, contagem de séries, recordes e sugestões. */
+const TIPOS_SERIE = {T:{rot:"", cor:"", nome:"válida"},
+                     A:{rot:"A", cor:"var(--amber)", nome:"aquecimento"},
+                     P:{rot:"P", cor:"var(--blue)", nome:"preparatória"}};
+const tipoSerie = st => st.tipo || (st.warm ? "A" : "T");
+const valida = st => tipoSerie(st)==="T";
+const proxTipo = st => ({T:"A", A:"P", P:"T"})[tipoSerie(st)];
+
 const par = (w,r) => num(w)>0 ? num(r)+"×"+fmt(num(w)) : num(r)+" reps";
 const parKg = (w,r) => num(w)>0 ? num(r)+"×"+fmt(num(w))+" kg" : num(r)+" reps";
 const e1rm = (w,r) => w>0 && r>0 ? w*(1+r/30) : 0;
@@ -535,16 +545,16 @@ function dateLabel(ts){
   return d.toLocaleDateString("pt-BR",{day:"2-digit",month:"short"});
 }
 function volume(entries){
-  let v=0; entries.forEach(en => en.sets.forEach(s => { if(s.done && !s.warm) v += num(s.w)*num(s.r); })); return v;
+  let v=0; entries.forEach(en => en.sets.forEach(s => { if(s.done && valida(s)) v += num(s.w)*num(s.r); })); return v;
 }
-function doneSets(entries){ let n=0; entries.forEach(en=>en.sets.forEach(s=>{if(s.done&&!s.warm)n++})); return n; }
+function doneSets(entries){ let n=0; entries.forEach(en=>en.sets.forEach(s=>{if(s.done&&valida(s))n++})); return n; }
 
 function historyFor(exId){
   const out=[];
   S.sessions.forEach(se => {
     const en = se.entries.find(e => e.exId===exId);
     if(!en) return;
-    const sets = en.sets.filter(s=>s.done && !s.warm && (num(s.w)>0 || num(s.r)>0));
+    const sets = en.sets.filter(s=>s.done && valida(s) && (num(s.w)>0 || num(s.r)>0));
     if(!sets.length) return;
     let bw=0, be=0, br=0, vol=0, reps=0, bset=null;
     sets.forEach(s => { const w=num(s.w), r=num(s.r); vol+=w*r; reps+=r;
@@ -560,7 +570,7 @@ function bestFor(exId, exceptId){
   S.sessions.forEach(se => {
     if(exceptId && se.id===exceptId) return;
     const en = se.entries.find(x=>x.exId===exId); if(!en) return;
-    en.sets.forEach(s=>{ if(!s.done || s.warm) return; const W=num(s.w), R=num(s.r);
+    en.sets.forEach(s=>{ if(!s.done || !valida(s)) return; const W=num(s.w), R=num(s.r);
       if(W>w) w=W; const E=e1rm(W,R); if(E>e) e=E; });
   });
   return {w,e};
@@ -568,7 +578,7 @@ function bestFor(exId, exceptId){
 function lastSetsFor(exId){
   for(let i=S.sessions.length-1;i>=0;i--){
     const en = S.sessions[i].entries.find(x=>x.exId===exId);
-    if(en && en.sets.some(s=>s.done && !s.warm)) return en.sets.filter(s=>s.done && !s.warm);
+    if(en && en.sets.some(s=>s.done && valida(s))) return en.sets.filter(s=>s.done && valida(s));
   }
   return null;
 }
@@ -629,7 +639,7 @@ function weekByMuscle(){
   const m={};
   S.sessions.filter(s=>(s.end||s.start)>=mon).forEach(se=>se.entries.forEach(en=>{
     const g=exById(en.exId).muscle;
-    m[g]=(m[g]||0)+en.sets.filter(x=>x.done&&!x.warm).length;
+    m[g]=(m[g]||0)+en.sets.filter(x=>x.done&&valida(x)).length;
   }));
   return Object.entries(m).sort((a,b)=>b[1]-a[1]);
 }
@@ -813,7 +823,7 @@ function proximoPendente(depois){
 }
 
 function metricasEx(sets){
-  const val = sets.filter(s=>s.done!==false && !s.warm);
+  const val = sets.filter(s=>s.done!==false && valida(s));
   let reps=0, carga=0, indice=0, volume=0;
   val.forEach(s=>{ const w=num(s.w), r=num(s.r);
     reps+=r; volume+=w*r; if(w>carga) carga=w;
@@ -846,7 +856,7 @@ function cardExercicio(en, ei, foco, cabecalho){
   const prev = lastSetsFor(en.exId);
   const rec = bestFor(en.exId, null);
   let prIdx=-1, prBest=0;
-  if(rec.w>0) en.sets.forEach((st,si) => { if(!st.done || st.warm) return;
+  if(rec.w>0) en.sets.forEach((st,si) => { if(!st.done || !valida(st)) return;
     const W=num(st.w), R=num(st.r), E=e1rm(W,R);
     if(W>0 && (W>rec.w+0.001 || E>rec.e+0.001) && E>prBest){ prBest=E; prIdx=si; } });
 
@@ -876,8 +886,10 @@ function cardExercicio(en, ei, foco, cabecalho){
   en.sets.forEach((st,si) => {
     const p = prev ? prev[Math.min(si, prev.length-1)] : null;
     h += `<div class="setrow ${comHist?"comhist":""} ${st.done?"ok":""}">
-      <button class="setno" data-act="warm" data-i="${ei}" data-j="${si}" title="Aquecimento"
-        style="border:0;background:none;font:inherit;cursor:pointer;${st.warm?"color:var(--amber);font-weight:650":""}">${st.warm?"A":si+1}</button>
+      <button class="setno" data-act="tipoSerie" data-i="${ei}" data-j="${si}"
+        title="Série ${TIPOS_SERIE[tipoSerie(st)].nome} — toque para mudar"
+        aria-label="Série ${si+1}, ${TIPOS_SERIE[tipoSerie(st)].nome}. Toque para mudar o tipo"
+        style="border:0;background:none;font:inherit;cursor:pointer;${valida(st)?"":"color:"+TIPOS_SERIE[tipoSerie(st)].cor+";font-weight:650"}">${valida(st)?(si+1):TIPOS_SERIE[tipoSerie(st)].rot}</button>
       <input class="num" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="${st.sug?esc(st.sug.r):(en.reps?esc(en.reps):"0")}" aria-label="Repetições, série ${si+1}">
       <input class="num" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="${st.sug?esc(st.sug.w):"0"}" aria-label="Carga em kg, série ${si+1}${st.sug?", sugestão "+esc(st.sug.w):""}">
       ${comHist?`<span class="hist">${p?par(p.w,p.r):"—"}</span>`:""}
@@ -949,7 +961,7 @@ function proximoPendente(depois){
 }
 
 function metricasEx(sets){
-  const val = sets.filter(s=>s.done!==false && !s.warm);
+  const val = sets.filter(s=>s.done!==false && valida(s));
   let reps=0, carga=0, indice=0, volume=0;
   val.forEach(s=>{ const w=num(s.w), r=num(s.r);
     reps+=r; volume+=w*r; if(w>carga) carga=w;
@@ -997,8 +1009,8 @@ function vSession(){
     const total=en.sets.length, done=en.sets.filter(s=>s.done).length;
     const cls = done===0 ? "" : (done===total ? "done" : "doing");
     const aberto = sessaoAberta(ei,en);
-    const feitas = en.sets.filter(s=>s.done && !s.warm);
-    const soAquece = !feitas.length && en.sets.some(s=>s.done && s.warm);
+    const feitas = en.sets.filter(s=>s.done && valida(s));
+    const soAquece = !feitas.length && en.sets.some(s=>s.done && !valida(s));
 
     h += `<div class="ex ${cls}">
       <div class="between" data-act="dobrar" data-i="${ei}" role="button" tabindex="0"
@@ -1008,7 +1020,7 @@ function vSession(){
           <h3 class="ellip">${esc(ex.name)}</h3>
           ${aberto ? "" : `<p class="muted" style="font-size:12.5px">${
               feitas.length ? feitas.length+" série"+(feitas.length===1?"":"s")+" · melhor "+melhorSerie(feitas)
-                            : (soAquece ? "só aquecimento" : "sem séries")}</p>`}
+                            : (soAquece ? "só aquecimento/preparação" : "sem séries")}</p>`}
         </div>
         <button class="btn ghost sm" data-act="exMenu" data-i="${ei}" aria-label="Opções de ${esc(ex.name)}"
           style="font-size:18px;line-height:1;padding:4px 8px">⋯</button>
@@ -1140,7 +1152,7 @@ function listaExercicios(se, aberto){
 function gruposDaSessao(se){
   const m={};
   se.entries.forEach(en => {
-    const n=en.sets.filter(x=>x.done && !x.warm).length;
+    const n=en.sets.filter(x=>x.done && valida(x)).length;
     if(!n) return;
     const g=exById(en.exId).muscle;
     m[g]=(m[g]||0)+n;
@@ -1510,7 +1522,7 @@ function renderFloat(){
 
         <button class="btn wide stack" data-act="swapEx" data-i="${ei}">Trocar por outro exercício</button>
         <button class="btn wide danger" style="margin-top:8px" data-act="rmEx" data-i="${ei}">Remover do treino</button>
-        <p class="muted" style="font-size:12.5px;margin-top:14px">Dica: toque no número de uma série para marcá-la como aquecimento — ela fica de fora do volume e dos recordes.</p>
+        <p class="muted" style="font-size:12.5px;margin-top:14px">Dica: toque no número de uma série para mudar o tipo — válida, <strong style="color:var(--amber)">A</strong>quecimento ou <strong style="color:var(--blue)">P</strong>reparatória. Aquecimento e preparatória ficam fora do volume, da contagem e dos recordes.</p>
       </div></div></div>`);
   }
   if(sheetText){
@@ -1562,7 +1574,7 @@ function renderFloat(){
       const fmtn = n => casas ? fmt(n) : Math.round(n);
       const cor = d===null||Math.abs(d)<0.05 ? "var(--muted)" : (d>0 ? "var(--green)" : "var(--red)");
       const seta = d===null||Math.abs(d)<0.05 ? "—" : (d>0 ? "▲" : "▼");
-      return `<div style="flex:1;text-align:center">
+      return `<div style="flex:1 1 30%;min-width:84px;text-align:center">
         <div style="font-size:22px;font-weight:650;letter-spacing:-.02em" class="tnum">${fmtn(val)}${unidade||""}</div>
         <div style="font-size:12.5px;color:${cor}" class="tnum">${seta}${d!==null&&Math.abs(d)>=0.05?" "+fmtn(Math.abs(d)):""}</div>
         <div class="muted" style="font-size:12px;margin-top:2px">${rotulo}</div>
@@ -1572,9 +1584,10 @@ function renderFloat(){
       <div class="dialogo" data-stop="1" role="dialog" aria-modal="true" aria-label="Resumo de ${esc(ex.name)}">
         <h3 class="ellip">${esc(ex.name)}</h3>
         <p class="muted" style="font-size:13px;margin-top:2px">${antes ? "Comparado com a última vez" : "Primeira vez neste exercício"}</p>
-        <div class="row" style="margin-top:14px;align-items:flex-start">
+        <div class="row" style="margin-top:14px;align-items:flex-start;flex-wrap:wrap;row-gap:14px">
           ${linha("séries", agora.series, antes&&antes.series)}
           ${linha("reps", agora.reps, antes&&antes.reps)}
+          ${linha("carga total", agora.volume, antes&&antes.volume, " kg", agora.volume<100)}
           ${linha("maior carga", agora.carga, antes&&antes.carga, " kg", true)}
           ${linha("índice", agora.indice, antes&&antes.indice)}
         </div>
@@ -1659,6 +1672,17 @@ function renderFloat(){
   if(toastMsg) host.insertAdjacentHTML("beforeend", `<div class="toast" role="status" aria-live="polite">${esc(toastMsg)}</div>`);
 }
 
+/* O cabeçalho é fixo, então alinhar o topo do elemento com o topo da janela
+   esconde o nome atrás dele. Aqui descontamos a altura real do cabeçalho. */
+function rolarAte(el){
+  if(!el) return;
+  const topo=document.querySelector(".top");
+  const altura=(topo?topo.offsetHeight:0) + (document.getElementById("offbar")?document.getElementById("offbar").offsetHeight:0);
+  const y=el.getBoundingClientRect().top + window.scrollY - altura - 12;
+  try{ window.scrollTo({top:Math.max(0,y), behavior:"smooth"}); }
+  catch(e){ window.scrollTo(0, Math.max(0,y)); }
+}
+
 function renderOffline(){
   const id="offbar"; const old=document.getElementById(id); if(old) old.remove();
   if(navigator.onLine!==false){ document.body.style.paddingTop=""; document.documentElement.style.setProperty("--offtop","0px"); return; }
@@ -1712,7 +1736,7 @@ function newSession(routine){
 
 function finish(){
   const a=S.active; if(!a) return;
-  const entries=a.entries.map(en=>({exId:en.exId, note:en.note||"", sets:en.sets.filter(s=>s.done&&!s.warm).map(s=>({w:num(s.w),r:num(s.r),done:true}))}))
+  const entries=a.entries.map(en=>({exId:en.exId, note:en.note||"", sets:en.sets.filter(s=>s.done&&valida(s)).map(s=>({w:num(s.w),r:num(s.r),done:true}))}))
                          .filter(en=>en.sets.length);
   if(!entries.length){ toast("Marque ao menos uma série antes de concluir."); return; }
   const prs=[];
@@ -1772,7 +1796,7 @@ document.addEventListener("click", ev => {
   const id=t.dataset.id, i=+t.dataset.i, j=+t.dataset.j;
 
   // ações que só fazem sentido com treino em andamento
-  if(!S.active && ["check","addSet","delSet","warm","setRest","rmEx","moverEx","swapEx",
+  if(!S.active && ["check","addSet","delSet","tipoSerie","setRest","rmEx","moverEx","swapEx",
                    "foco","irPara","dobrar","exMenu","pickWorkout","cancelWorkout","finish"].includes(a)){
     render(); return;
   }
@@ -1789,7 +1813,7 @@ document.addEventListener("click", ev => {
       const alvo = proximoPendente(de) ?? Math.min(S.active.entries.length-1, de+1);
       resumoEx=null; focoIdx=alvo; dobrado.delete(alvo); render();
       if(modo()!=="foco"){ const el=document.querySelectorAll(".ex")[alvo];
-        if(el && el.scrollIntoView) el.scrollIntoView({block:"start", behavior:"smooth"}); }
+        rolarAte(el); }
       else window.scrollTo(0,0);
       break; }
     case "semResumo": S.meta=Object.assign({},S.meta||{},{semResumo:t.dataset.v==="1"}); save(); render(); break;
@@ -1851,7 +1875,7 @@ document.addEventListener("click", ev => {
       const abrindo = rotinaAberta!==id;
       rotinaAberta = abrindo ? id : null; render();
       if(abrindo){ const el=document.querySelector(`[data-act="abrirRotina"][data-id="${id}"]`);
-        if(el && el.scrollIntoView) el.scrollIntoView({block:"nearest", behavior:"smooth"}); }
+        rolarAte(el); }
       break; }
     case "abrirCal": voltarPara = view; view="calendario"; calMes=inicioMes(Date.now()); calDia=null; render(); window.scrollTo(0,0); break;
     case "mes": { const b=new Date(calMes||inicioMes(Date.now()));
@@ -1945,7 +1969,8 @@ document.addEventListener("click", ev => {
       if(dobrado.has(i)) dobrado.delete(i); else dobrado.add(i); render(); break;
     case "setRest": S.active.entries[i].rest=+t.dataset.d; save(); render(); break;
     case "swapEx": exMenu=null; picker={mode:"swap", i:i, q:"", muscle:null}; renderFloat(); break;
-    case "warm": { const st=S.active.entries[i].sets[j]; st.warm=!st.warm; save(); render(); break; }
+    case "tipoSerie": { const st=S.active.entries[i].sets[j];
+      st.tipo=proxTipo(st); delete st.warm; save(); render(); break; }
     case "finish": finish(); break;
     case "cancelWorkout": {
       const feitas=doneSets(S.active.entries);
