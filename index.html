@@ -575,12 +575,26 @@ function bestFor(exId, exceptId){
   });
   return {w,e};
 }
-function lastSetsFor(exId){
+/* Última execução do exercício. Procura primeiro dentro do MESMO treino:
+   o mesmo exercício no Push e no Upper vem em ordem e fadiga diferentes, então
+   comparar entre treinos distorce. Só cai para outro treino se nunca tiver sido
+   feito neste — aí a tela avisa. */
+function ultimaExecucao(exId, rotId){
+  const id = rotId===undefined ? (S.active ? S.active.routineId : null) : rotId;
+  let fora = null;
   for(let i=S.sessions.length-1;i>=0;i--){
-    const en = S.sessions[i].entries.find(x=>x.exId===exId);
-    if(en && en.sets.some(s=>s.done && valida(s))) return en.sets.filter(s=>s.done && valida(s));
+    const se = S.sessions[i];
+    const en = se.entries.find(x=>x.exId===exId);
+    if(!en || !en.sets.some(s=>s.done && valida(s))) continue;
+    const sets = en.sets.filter(s=>s.done && valida(s));
+    if(se.routineId === id) return {sets, mesmoTreino:true, nome:se.name};
+    if(!fora) fora = {sets, mesmoTreino:false, nome:se.name};
   }
-  return null;
+  return fora;
+}
+function lastSetsFor(exId, rotId){
+  const u = ultimaExecucao(exId, rotId);
+  return u ? u.sets : null;
 }
 function weekStats(){
   const now=new Date(); const day=(now.getDay()+6)%7;
@@ -833,8 +847,9 @@ function metricasEx(sets){
 
 function comparativoEx(exId, setsAtuais){
   const agora = metricasEx(setsAtuais);
-  const antes = lastSetsFor(exId);
-  return {agora, antes: antes ? metricasEx(antes) : null};
+  const u = ultimaExecucao(exId);
+  return {agora, antes: u ? metricasEx(u.sets) : null,
+          mesmoTreino: u ? u.mesmoTreino : true, ondeFoi: u ? u.nome : ""};
 }
 
 function melhorSerie(sets){
@@ -883,17 +898,21 @@ function cardExercicio(en, ei, foco, cabecalho){
         <span>#</span><span>reps</span><span>kg</span>${comHist?"<span>última</span>":""}<span></span></div>`
     : `<div style="height:8px"></div>`;
 
+  let nValida = 0;   // as válidas são numeradas 1,2,3... ignorando A e P
   en.sets.forEach((st,si) => {
+    const ehValida = valida(st);
+    if(ehValida) nValida++;
+    const rotulo = ehValida ? String(nValida) : TIPOS_SERIE[tipoSerie(st)].rot;
     const p = prev ? prev[Math.min(si, prev.length-1)] : null;
     h += `<div class="setrow ${comHist?"comhist":""} ${st.done?"ok":""}">
       <button class="setno" data-act="tipoSerie" data-i="${ei}" data-j="${si}"
         title="Série ${TIPOS_SERIE[tipoSerie(st)].nome} — toque para mudar"
-        aria-label="Série ${si+1}, ${TIPOS_SERIE[tipoSerie(st)].nome}. Toque para mudar o tipo"
-        style="border:0;background:none;font:inherit;cursor:pointer;${valida(st)?"":"color:"+TIPOS_SERIE[tipoSerie(st)].cor+";font-weight:650"}">${valida(st)?(si+1):TIPOS_SERIE[tipoSerie(st)].rot}</button>
-      <input class="num" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="${st.sug?esc(st.sug.r):(en.reps?esc(en.reps):"0")}" aria-label="Repetições, série ${si+1}">
-      <input class="num" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="${st.sug?esc(st.sug.w):"0"}" aria-label="Carga em kg, série ${si+1}${st.sug?", sugestão "+esc(st.sug.w):""}">
+        aria-label="${ehValida?"Série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}. Toque para mudar o tipo"
+        style="border:0;background:none;font:inherit;cursor:pointer;${ehValida?"":"color:"+TIPOS_SERIE[tipoSerie(st)].cor+";font-weight:650"}">${rotulo}</button>
+      <input class="num" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="${st.sug?esc(st.sug.r):(en.reps?esc(en.reps):"0")}" aria-label="Repetições, ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}">
+      <input class="num" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="${st.sug?esc(st.sug.w):"0"}" aria-label="Carga em kg, ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}${st.sug?", sugestão "+esc(st.sug.w):""}">
       ${comHist?`<span class="hist">${p?par(p.w,p.r):"—"}</span>`:""}
-      <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Concluir série ${si+1} de ${esc(ex.name)}">✓</button>
+      <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Concluir ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome} de ${esc(ex.name)}">✓</button>
     </div>${si===prIdx?`<div style="margin:-2px 0 4px 34px"><span class="tag pr">recorde pessoal</span></div>`:""}`;
   });
   return h;
@@ -971,8 +990,9 @@ function metricasEx(sets){
 
 function comparativoEx(exId, setsAtuais){
   const agora = metricasEx(setsAtuais);
-  const antes = lastSetsFor(exId);
-  return {agora, antes: antes ? metricasEx(antes) : null};
+  const u = ultimaExecucao(exId);
+  return {agora, antes: u ? metricasEx(u.sets) : null,
+          mesmoTreino: u ? u.mesmoTreino : true, ondeFoi: u ? u.nome : ""};
 }
 
 function melhorSerie(sets){
@@ -1566,7 +1586,7 @@ function renderFloat(){
   }
   if(resumoEx!==null && S.active && S.active.entries[resumoEx]){
     const ei=resumoEx, en=S.active.entries[ei], ex=exById(en.exId);
-    const {agora, antes} = comparativoEx(en.exId, en.sets);
+    const {agora, antes, mesmoTreino, ondeFoi} = comparativoEx(en.exId, en.sets);
     const pendente = proximoPendente(ei);
     const tudoFeito = pendente===null;
     const linha = (rotulo, val, ant, unidade, casas) => {
@@ -1583,7 +1603,10 @@ function renderFloat(){
     host.insertAdjacentHTML("beforeend", `<div class="overlay centro" data-act="fecharResumo">
       <div class="dialogo" data-stop="1" role="dialog" aria-modal="true" aria-label="Resumo de ${esc(ex.name)}">
         <h3 class="ellip">${esc(ex.name)}</h3>
-        <p class="muted" style="font-size:13px;margin-top:2px">${antes ? "Comparado com a última vez" : "Primeira vez neste exercício"}</p>
+        <p class="muted" style="font-size:13px;margin-top:2px">${
+          !antes ? "Primeira vez neste exercício"
+          : mesmoTreino ? "Comparado com a última vez neste treino"
+          : "Primeira vez neste treino — comparando com “"+esc(ondeFoi)+"”"}</p>
         <div class="row" style="margin-top:14px;align-items:flex-start;flex-wrap:wrap;row-gap:14px">
           ${linha("séries", agora.series, antes&&antes.series)}
           ${linha("reps", agora.reps, antes&&antes.reps)}
