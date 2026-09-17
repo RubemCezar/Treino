@@ -372,7 +372,11 @@ const cardioNomes = () => CARDIOS.map(c=>c[0]);
 const INTENSIDADES = ["Leve","Moderado","Intenso"];
 const MUSCLES = ["Peito", "Costas", "Ombros", "Bíceps", "Tríceps", "Antebraço", "Quadríceps", "Posterior", "Glúteos", "Panturrilha", "Core", "Cardio", "Outros"];
 
-const TEMPLATES = {
+/* Cada split tem uma versão "padrão" e uma "ênfase inferior" (mais posterior,
+   glúteo e quadríceps) — a diferença é peso e seleção extra de exercício, nunca
+   um grupo tirado por completo, então a pessoa escolhe pelo foco que quer, não
+   por uma divisão binária. */
+const TEMPLATES_PADRAO = {
   ABC: [
     ["Treino A · Peito, ombros e tríceps", ["Supino reto com barra","Supino inclinado com halteres","Desenvolvimento com halteres","Elevação lateral","Tríceps na polia com corda","Tríceps testa"]],
     ["Treino B · Costas e bíceps", ["Puxada frontal na polia","Remada curvada com barra","Remada baixa na polia","Crucifixo invertido","Rosca direta com barra","Rosca martelo"]],
@@ -393,6 +397,104 @@ const TEMPLATES = {
   ]
 };
 
+const TEMPLATES_ENFASE_INFERIOR = {
+  ABC: [
+    ["Treino A · Peito, ombros e tríceps", ["Supino reto com barra","Supino inclinado com halteres","Desenvolvimento com halteres","Elevação lateral","Tríceps na polia com corda"]],
+    ["Treino B · Costas e bíceps", ["Puxada frontal na polia","Remada curvada com barra","Crucifixo invertido","Rosca direta com barra"]],
+    ["Treino C · Glúteos e pernas", ["Agachamento livre","Stiff","Elevação pélvica","Leg press 45°","Cadeira extensora","Mesa flexora","Cadeira abdutora","Panturrilha em pé"]]
+  ],
+  PPL: [
+    ["Push · Empurrar", ["Supino reto com barra","Supino inclinado com halteres","Desenvolvimento com barra","Elevação lateral","Tríceps na polia com corda"]],
+    ["Pull · Puxar", ["Barra fixa","Remada curvada com barra","Puxada frontal na polia","Rosca direta com barra"]],
+    ["Legs · Glúteos e pernas", ["Agachamento livre","Stiff","Elevação pélvica","Leg press 45°","Cadeira extensora","Mesa flexora","Cadeira abdutora","Panturrilha em pé"]]
+  ],
+  UL: [
+    ["Superior", ["Supino reto com barra","Remada curvada com barra","Desenvolvimento com halteres","Puxada frontal na polia","Rosca direta com barra"]],
+    ["Inferior · Glúteos e pernas", ["Agachamento livre","Stiff","Elevação pélvica","Leg press 45°","Mesa flexora","Cadeira abdutora","Panturrilha em pé"]]
+  ],
+  FB: [
+    ["Corpo inteiro A", ["Agachamento livre","Stiff","Supino reto com barra","Remada curvada com barra","Elevação pélvica"]],
+    ["Corpo inteiro B", ["Levantamento terra","Cadeira abdutora","Supino inclinado com halteres","Puxada frontal na polia","Mesa flexora"]]
+  ]
+};
+
+const TEMPLATES = TEMPLATES_PADRAO;   // usado onde o foco ainda não importa (ex.: SPLITS completo)
+function templatesParaSexo(sexo){ return sexo==="F" ? TEMPLATES_ENFASE_INFERIOR : TEMPLATES_PADRAO; }
+
+
+/* ---------- assistente: monta a semana inteira a partir de cinco respostas ---------- */
+const OBJETIVOS = {
+  hipertrofia: {nome:"Hipertrofia", sets:3, reps:"8-12", rest:90,  desc:"séries de 8 a 12, descanso de 1min30"},
+  forca:       {nome:"Força",       sets:4, reps:"3-6",  rest:180, desc:"séries de 3 a 6, descanso de 3min"},
+  resistencia: {nome:"Resistência", sets:3, reps:"15-20",rest:45,  desc:"séries de 15 a 20, descanso de 45s"}
+};
+
+/* Ordem importa: o primeiro de cada grupo é o exercício mais completo. */
+const POOL = {
+  "Peito":["Supino reto com barra","Supino inclinado com halteres","Supino reto na máquina","Crucifixo na máquina","Crossover na polia"],
+  "Costas":["Barra fixa","Remada curvada com barra","Puxada frontal na polia","Remada baixa na polia","Remada unilateral com halter"],
+  "Ombros":["Desenvolvimento com halteres","Elevação lateral","Crucifixo invertido","Elevação lateral na polia"],
+  "Bíceps":["Rosca direta com barra","Rosca martelo","Rosca alternada com halteres","Rosca scott"],
+  "Tríceps":["Tríceps na polia com corda","Tríceps testa","Paralelas","Tríceps francês"],
+  "Quadríceps":["Agachamento livre","Leg press 45°","Cadeira extensora","Agachamento hack","Búlgaro"],
+  "Posterior":["Stiff","Mesa flexora","Levantamento terra romeno","Cadeira flexora"],
+  "Glúteos":["Elevação pélvica","Cadeira abdutora","Coice na polia"],
+  "Panturrilha":["Panturrilha em pé","Panturrilha sentado"],
+  "Core":["Prancha","Abdominal na polia","Elevação de pernas"]
+};
+
+const DIVISOES = {
+  2:[["Corpo inteiro A","full"],["Corpo inteiro B","full"]],
+  3:[["Push · Empurrar","push"],["Pull · Puxar","pull"],["Legs · Pernas","legs"]],
+  4:[["Superior A","upper"],["Inferior A","lower"],["Superior B","upper"],["Inferior B","lower"]],
+  5:[["Push · Empurrar","push"],["Pull · Puxar","pull"],["Legs · Pernas","legs"],["Superior","upper"],["Inferior","lower"]],
+  6:[["Push A","push"],["Pull A","pull"],["Legs A","legs"],["Push B","push"],["Pull B","pull"],["Legs B","legs"]]
+};
+
+const SLOTS = {
+  push:["Peito","Peito","Ombros","Tríceps","Ombros","Tríceps","Peito","Tríceps"],
+  pull:["Costas","Costas","Costas","Bíceps","Bíceps","Costas","Core","Bíceps"],
+  legs:["Quadríceps","Posterior","Quadríceps","Glúteos","Panturrilha","Posterior","Core","Quadríceps"],
+  upper:["Peito","Costas","Ombros","Costas","Peito","Bíceps","Tríceps","Ombros"],
+  lower:["Quadríceps","Posterior","Glúteos","Quadríceps","Panturrilha","Posterior","Core","Glúteos"],
+  full:["Quadríceps","Peito","Costas","Ombros","Posterior","Core","Bíceps","Tríceps"]
+};
+
+/* Quantos exercícios cabem no tempo informado. Conta 45s de execução por série,
+   mais o descanso do objetivo, e reserva 5 min de aquecimento inicial. */
+function exerciciosNoTempo(minutos, obj){
+  const porSerie = obj.rest + 45;
+  const cabem = Math.floor((minutos*60 - 300) / (obj.sets * porSerie));
+  return Math.max(3, Math.min(8, cabem));
+}
+
+function gerarPlano(cfg){
+  const obj = OBJETIVOS[cfg.objetivo] || OBJETIVOS.hipertrofia;
+  const nEx = exerciciosNoTempo(cfg.tempo, obj);
+  const dias = DIVISOES[cfg.dias] || DIVISOES[3];
+
+  return dias.map(([nome, tipo]) => {
+    let slots = SLOTS[tipo].slice();
+    // ênfase inferior: glúteo e posterior ganham espaço nos dias de perna
+    if(cfg.enfase==="F" && (tipo==="legs" || tipo==="lower" || tipo==="full")){
+      slots = ["Glúteos","Posterior"].concat(slots);
+    }
+    // grupo priorizado entra na frente, se fizer sentido para o dia
+    if(cfg.foco && slots.includes(cfg.foco)) slots = [cfg.foco].concat(slots);
+
+    const usados = [];
+    const items = [];
+    for(let i=0; i<slots.length && items.length<nEx; i++){
+      const grupo = slots[i], lista = POOL[grupo] || [];
+      const escolhido = lista.find(n => !usados.includes(n));
+      if(!escolhido) continue;
+      usados.push(escolhido);
+      items.push({exId: slug(escolhido), sets: obj.sets, reps: obj.reps, rest: obj.rest});
+    }
+    return {nome, items};
+  });
+}
+
 /* ---------- estado ---------- */
 let S = {custom:[], routines:[], sessions:[], cardio:[], active:null, meta:{lastBackup:0,lastBackupCount:0}};
 let view = "treinar";
@@ -412,6 +514,7 @@ let histLimite = 15;                // quantos treinos o histórico desenha por 
 let exEdit = null;                  // exercício criado sendo editado
 let resumoEx = null;                // exercício que acabou de ser concluído
 let formCardio = null;              // registro de cardio sendo criado ou editado
+let assistente = null;              // montagem de plano personalizado
 let cardioLimite = 15;
 let cardioBusca = "", cardioTodas = false;
 const mostrarResumo = () => !(S.meta && S.meta.semResumo);
@@ -746,7 +849,8 @@ function vTreinar(){
         <button class="btn sm" data-act="tpl" data-k="PPL">Push/Pull/Legs</button>
         <button class="btn sm" data-act="tpl" data-k="UL">Superior/Inferior</button>
         <button class="btn sm" data-act="tpl" data-k="FB">Corpo inteiro</button>
-        <button class="btn sm primary" data-act="newRoutine">Montar do zero</button>
+        <button class="btn sm primary" data-act="abrirAssistente">Montar personalizado</button>
+        <button class="btn sm" data-act="newRoutine">Montar do zero</button>
       </div></div>`;
   } else {
     h += `<h2 class="stack">Meus treinos</h2>`;
@@ -779,7 +883,8 @@ function vTreinar(){
       </div>`;
     });
     if(S.routines.length>1) h += `<p class="muted stack" style="font-size:12.5px;text-align:center">Segure um treino para mudar a ordem da sequência.</p>`;
-    h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Novo treino</button></div>`;
+    h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Novo treino</button></div>
+          <div class="stack" style="text-align:center"><button class="btn ghost" data-act="abrirAssistente">Montar treino personalizado</button></div>`;
   }
 
   // depois, o resto do panorama
@@ -1064,7 +1169,13 @@ function vEdit(){
       <input class="field" style="margin-top:6px" id="rname" value="${esc(r.name)}" placeholder="Treino A · Peito e tríceps">
     </div>`;
   if(!r.items.length){
-    h += `<div class="empty">Sem exercícios. Adicione o primeiro abaixo.</div>`;
+    h += `<div class="card stack"><h3>Começar de um modelo pronto</h3>
+      <p class="muted" style="font-size:13px;margin-top:4px">Preenche este treino com um conjunto de exercícios prontos; você edita como quiser depois.</p>
+      <div style="margin-top:10px">
+        ${splitsAtuais().map(sp=>`<button class="pick" data-act="usarModeloDia" data-sp="${sp.k}" style="width:100%;text-align:left">
+            <span class="grow ellip">${esc(sp.nome)}</span><span class="tag mus">${sp.exs} exerc.</span></button>`).join("")}
+      </div></div>
+    <div class="empty">Sem exercícios. Adicione o primeiro abaixo.</div>`;
   }
   r.items.forEach((it,i) => {
     const ex=exById(it.exId);
@@ -1125,6 +1236,17 @@ function resumoCard(){
     <div class="row" style="gap:6px;margin-top:10px">
       <button class="chip ${on?"on":""}" data-act="semResumo" data-v="0">Mostrar</button>
       <button class="chip ${on?"":"on"}" data-act="semResumo" data-v="1">Não mostrar</button>
+    </div></div>`;
+}
+
+function sexoCard(){
+  const v = S.meta && S.meta.sexo;
+  return `<div class="card stack"><h3>Ênfase dos modelos prontos</h3>
+    <p class="muted" style="font-size:13px;margin-top:4px">Ajusta os modelos ABC, PPL, Superior/Inferior e Corpo inteiro — o foco muda o volume de posterior, glúteo e quadríceps, sem tirar nenhum grupo. Não afeta treinos que você já montou.</p>
+    <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap">
+      <button class="chip ${v==="M"?"on":""}" data-act="setSexo" data-v="M">Padrão</button>
+      <button class="chip ${v==="F"?"on":""}" data-act="setSexo" data-v="F">Ênfase inferior</button>
+      <button class="chip ${!v?"on":""}" data-act="setSexo" data-v="">Sem preferência</button>
     </div></div>`;
 }
 
@@ -1321,7 +1443,7 @@ function vCardio(){
 }
 
 function vConfig(){
-  return temaCard() + resumoCard() + meusExerciciosCard() + dataCard() +
+  return temaCard() + sexoCard() + resumoCard() + meusExerciciosCard() + dataCard() +
     `<div class="card stack"><h3>Sobre</h3>
       <p class="muted" style="font-size:13px;margin-top:4px">Seus treinos ficam apenas neste aparelho. Não há conta, servidor nem sincronização — por isso o backup é o que garante os dados a longo prazo.</p>
       <p class="muted" style="font-size:13px;margin-top:8px">${S.sessions.length} treinos feitos, ${S.routines.length} treinos salvos, ${S.custom.length} exercícios criados por você.</p>
@@ -1682,6 +1804,55 @@ function renderFloat(){
         ${c.id?`<button class="btn wide danger" style="margin-top:8px" data-act="apagarCardio">Apagar registro</button>`:""}
       </div></div></div>`);
   }
+  if(assistente){
+    const a = assistente;
+    const obj = OBJETIVOS[a.objetivo];
+    const plano = gerarPlano(a);
+    const chip = (act, val, atual, rot) =>
+      `<button class="chip ${String(atual)===String(val)?"on":""}" data-act="${act}" data-v="${val}">${rot}</button>`;
+    host.insertAdjacentHTML("beforeend", `<div class="overlay" data-act="fecharAssistente"><div class="sheet" data-stop="1">
+      <header><h2>Montar treino personalizado</h2><button class="btn sm" data-act="fecharAssistente">Fechar</button></header>
+      <div class="body">
+        <label class="muted" style="font-size:12.5px">Ênfase</label>
+        <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+          ${chip("asEnfase","M",a.enfase,"Padrão")}${chip("asEnfase","F",a.enfase,"Ênfase inferior")}
+        </div>
+
+        <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Dias de treino por semana</label>
+        <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+          ${[2,3,4,5,6].map(d=>chip("asDias",d,a.dias,d+" dias")).join("")}
+        </div>
+
+        <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Tempo por treino</label>
+        <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+          ${[30,45,60,75,90].map(t=>chip("asTempo",t,a.tempo,t+" min")).join("")}
+        </div>
+
+        <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Objetivo</label>
+        <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+          ${Object.entries(OBJETIVOS).map(([k,o])=>chip("asObjetivo",k,a.objetivo,o.nome)).join("")}
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:6px">${esc(obj.desc)}</p>
+
+        <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Grupo priorizado</label>
+        <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
+          ${chip("asFoco","",a.foco,"Nenhum")}
+          ${Object.keys(POOL).map(g=>chip("asFoco",g,a.foco,g)).join("")}
+        </div>
+
+        <div class="sep" style="margin-top:18px"></div>
+        <h3>Vai criar ${plano.length} treinos</h3>
+        <div style="margin-top:8px">
+          ${plano.map(d=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)">
+            <div class="between"><strong class="ellip grow">${esc(d.nome)}</strong>
+              <span class="muted" style="font-size:12.5px;white-space:nowrap">${d.items.length} exerc.</span></div>
+            <p class="muted" style="font-size:12.5px;margin-top:2px">${d.items.map(it=>esc(exById(it.exId).name)).join(" · ")}</p>
+          </div>`).join("")}
+        </div>
+        <button class="btn wide primary stack" data-act="criarPlano">Criar estes ${plano.length} treinos</button>
+        <p class="muted" style="font-size:12px;margin-top:8px">Seus treinos atuais não são apagados — os novos entram no fim da lista.</p>
+      </div></div></div>`);
+  }
   if(dialogo){
     host.insertAdjacentHTML("beforeend", `<div class="overlay centro" data-act="dlgNao">
       <div class="dialogo" data-stop="1" role="alertdialog" aria-modal="true" aria-label="${esc(dialogo.titulo)}">
@@ -1777,8 +1948,13 @@ function finish(){
   toast(prs.length ? "Treino salvo · "+prs.length+" recorde"+(prs.length>1?"s":"")+": "+prs.slice(0,2).join(", ") : "Treino salvo.");
 }
 
+function splitsAtuais(){
+  return Object.entries(templatesParaSexo(S.meta && S.meta.sexo)).flatMap(([grupo,dias]) =>
+    dias.map(([nome,exs],i) => ({k:grupo+":"+i, nome, exs:exs.length, lista:exs})));
+}
+
 function applyTemplate(k){
-  TEMPLATES[k].forEach(([name,exs]) => {
+  templatesParaSexo(S.meta && S.meta.sexo)[k].forEach(([name,exs]) => {
     S.routines.push({id:uid(), name, items: exs.map(n => ({exId:slug(n), sets:3, reps:"8-12", rest:90}))});
   });
   view="treinar"; save(); render(); toast("Modelo adicionado. Ajuste os exercícios como quiser.");
@@ -1851,6 +2027,21 @@ document.addEventListener("click", ev => {
     case "fecharCardio": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       formCardio=null; renderFloat(); break;
     case "cardioTipo": lerFormCardio(); formCardio.tipo=t.dataset.v; cardioBusca=""; renderFloat(); break;
+    case "abrirAssistente": assistente = {enfase:(S.meta&&S.meta.sexo)||"M", dias:4, tempo:60,
+      objetivo:"hipertrofia", foco:""}; renderFloat(); break;
+    case "fecharAssistente": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
+      assistente=null; renderFloat(); break;
+    case "asEnfase": assistente.enfase=t.dataset.v; renderFloat(); break;
+    case "asDias": assistente.dias=+t.dataset.v; renderFloat(); break;
+    case "asTempo": assistente.tempo=+t.dataset.v; renderFloat(); break;
+    case "asObjetivo": assistente.objetivo=t.dataset.v; renderFloat(); break;
+    case "asFoco": assistente.foco=t.dataset.v; renderFloat(); break;
+    case "criarPlano": {
+      const plano = gerarPlano(assistente);
+      plano.forEach(d => S.routines.push({id:uid(), name:d.nome, items:d.items}));
+      assistente=null; view="treinar"; save(); render();
+      toast(plano.length+" treinos criados. Ajuste como quiser."); break; }
+    case "setSexo": S.meta=Object.assign({},S.meta||{},{sexo:t.dataset.v||null}); save(); render(); break;
     case "cardioTodas": lerFormCardio(); cardioTodas=true; renderFloat(); break;
     case "cardioMenos": lerFormCardio(); cardioTodas=false; renderFloat(); break;
     case "cardioInt": lerFormCardio(); formCardio.intensidade = formCardio.intensidade===t.dataset.v ? "" : t.dataset.v;
@@ -1873,6 +2064,12 @@ document.addEventListener("click", ev => {
         () => { S.cardio=S.cardio.filter(x=>x.id!==id0); save(); render(); toast("Cardio apagado."); });
       break; }
     case "maisCardio": cardioLimite += 25; render(); break;
+    case "usarModeloDia": { const sp=splitsAtuais().find(x=>x.k===t.dataset.sp); if(!sp) break;
+      const rt=S.routines.find(x=>x.id===editingId); if(!rt) break;
+      const nomeAtual = rt.name==="Novo treino" ? sp.nome : rt.name;
+      rt.name = nomeAtual;
+      rt.items = sp.lista.map(n => ({exId:slug(n), sets:3, reps:"8-12", rest:90}));
+      save(); render(); toast("Modelo aplicado. Ajuste como quiser."); break; }
     case "editEx": exEdit=id; renderFloat(); break;
     case "fecharEx": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       exEdit=null; renderFloat(); break;
@@ -2079,7 +2276,7 @@ document.addEventListener("keydown", ev => {
   if((ev.key==="Enter"||ev.key===" ") && ev.target.getAttribute && ev.target.getAttribute("role")==="button"){
     ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); return;
   }
-  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit||resumoEx!==null||formCardio)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; resumoEx=null; formCardio=null; renderFloat(); }
+  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit||resumoEx!==null||formCardio||assistente)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; resumoEx=null; formCardio=null; assistente=null; renderFloat(); }
   if(S.active && naSessao && modo()==="foco" && !picker && !exMenu && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
     if(ev.key==="ArrowLeft" && focoIdx>0){ focoIdx--; render(); }
     if(ev.key==="ArrowRight" && focoIdx<S.active.entries.length-1){ focoIdx++; render(); }
