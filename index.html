@@ -755,11 +755,12 @@ function vTreinar(){
       const lastDone = S.sessions.filter(x=>x.routineId===r.id).slice(-1)[0];
       const aberta = rotinaAberta===r.id;
       const ehProximo = r.id===proximo && S.routines.length>1;
-      h += `<div class="card stack" style="padding:12px 14px${ehProximo?";border-left:3px solid var(--blue)":""}">
+      h += `<div class="card stack arrastavel" data-arrastar="${idx}" data-lista="rotinas"
+        style="padding:12px 14px${ehProximo?";border-left:3px solid var(--blue)":""}">
         <div class="between">
           <div class="grow" data-act="abrirRotina" data-id="${r.id}" role="button" tabindex="0"
             aria-expanded="${aberta?"true":"false"}" style="cursor:pointer">
-            <h3 class="ellip">${esc(r.name)}${ehProximo?` <span class="tag prox">é a vez</span>`:""}</h3>
+            <h3 class="ellip">${esc(r.name)}${ehProximo?` <span class="tag prox">Próximo</span>`:""}</h3>
             <p class="muted" style="font-size:13px">${r.items.length} exercícios${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"} ${aberta?"▲":"▼"}</p>
           </div>
           <button class="btn primary" data-act="start" data-id="${r.id}">Treinar</button>
@@ -777,6 +778,7 @@ function vTreinar(){
           </div>` : ""}
       </div>`;
     });
+    if(S.routines.length>1) h += `<p class="muted stack" style="font-size:12.5px;text-align:center">Segure um treino para mudar a ordem da sequência.</p>`;
     h += `<div class="stack"><button class="btn wide" data-act="newRoutine">Novo treino</button></div>`;
   }
 
@@ -1066,7 +1068,7 @@ function vEdit(){
   }
   r.items.forEach((it,i) => {
     const ex=exById(it.exId);
-    h += `<div class="card stack arrastavel" data-arrastar="${i}" style="padding:12px 14px">
+    h += `<div class="card stack arrastavel" data-arrastar="${i}" data-lista="itens" style="padding:12px 14px">
       <div class="between"><div class="grow"><h3 class="ellip">${esc(ex.name)}</h3>
         <p class="muted" style="font-size:12.5px">${esc(ex.muscle)}</p></div>
         <div class="row" style="gap:4px">
@@ -1815,6 +1817,7 @@ function syncRoutineName(){
 document.addEventListener("click", ev => {
   const t=ev.target.closest("[data-act]"); 
   if(!t) return;
+  if(acabouArraste && t.dataset.act==="abrirRotina") return;   // era arraste, não toque
   const a=t.dataset.act;
   const id=t.dataset.id, i=+t.dataset.i, j=+t.dataset.j;
 
@@ -2101,7 +2104,7 @@ document.addEventListener("touchend", ev => {
 
 /* Reordenar exercícios do treino arrastando.
    Pressão longa evita conflito com a rolagem da página. */
-let arraste = null, esperaPressao = null, pontoInicial = null;
+let arraste = null, esperaPressao = null, pontoInicial = null, acabouArraste = false;
 
 // pura, para poder ser testada: em que posição o card cai
 function destinoArraste(centros, idx, centroArrastado){
@@ -2114,12 +2117,12 @@ function destinoArraste(centros, idx, centroArrastado){
   return destino;
 }
 
-function cardsDoEditor(){ return [...document.querySelectorAll("[data-arrastar]")]; }
+function cardsArrastaveis(lista){ return [...document.querySelectorAll(`[data-arrastar][data-lista="${lista}"]`)]; }
 
-function iniciarArraste(el, idx, y){
-  const cards = cardsDoEditor();
+function iniciarArraste(el, idx, y, lista){
+  const cards = cardsArrastaveis(lista);
   const rects = cards.map(c => c.getBoundingClientRect());
-  arraste = {idx, destino:idx, y0:y, el, cards,
+  arraste = {idx, destino:idx, y0:y, el, cards, lista,
              centros: rects.map(r => r.top + r.height/2),
              altura: rects[idx] ? rects[idx].height + 10 : 0};
   el.classList.add("levantado");
@@ -2147,26 +2150,36 @@ function moverArraste(y){
 
 function soltarArraste(){
   if(!arraste) return;
-  const {idx, destino} = arraste;
+  const {idx, destino, lista} = arraste;
   arraste.cards.forEach(c=>{ c.style.transform=""; c.classList.remove("levantado","deslocando"); });
   arraste = null;
-  if(destino!==idx && editingId){
-    syncRoutineName();
-    const r = S.routines.find(x=>x.id===editingId);
-    if(r){ const [mv]=r.items.splice(idx,1); r.items.splice(destino,0,mv); save(); }
+  acabouArraste = true;                       // engole o clique que vem logo depois
+  setTimeout(()=>{ acabouArraste=false; }, 350);
+  if(destino!==idx){
+    if(lista==="itens" && editingId){
+      syncRoutineName();
+      const r = S.routines.find(x=>x.id===editingId);
+      if(r){ const [mv]=r.items.splice(idx,1); r.items.splice(destino,0,mv); save(); }
+    } else if(lista==="rotinas"){
+      const [mv]=S.routines.splice(idx,1); S.routines.splice(destino,0,mv); save();
+    }
   }
   render();
 }
 
 document.addEventListener("pointerdown", ev => {
-  if(view!=="edit" || arraste) return;
+  if(arraste) return;
   const el = ev.target.closest && ev.target.closest("[data-arrastar]");
   if(!el) return;
+  const lista = el.dataset.lista;
+  // exercícios só no editor; treinos só na tela inicial fora de sessão
+  if(lista==="itens" && view!=="edit") return;
+  if(lista==="rotinas" && !(view==="treinar" && !(S.active && naSessao))) return;
   if(ev.target.closest("input,button,select,textarea")) return;   // campos e botões seguem normais
   const idx = +el.dataset.arrastar;
   pontoInicial = {y: ev.clientY, x: ev.clientX};
   clearTimeout(esperaPressao);
-  esperaPressao = setTimeout(() => iniciarArraste(el, idx, pontoInicial.y), 300);
+  esperaPressao = setTimeout(() => iniciarArraste(el, idx, pontoInicial.y, lista), 300);
 });
 
 document.addEventListener("pointermove", ev => {
