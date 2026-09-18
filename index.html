@@ -419,7 +419,7 @@ const TEMPLATES_ENFASE_INFERIOR = {
 };
 
 const TEMPLATES = TEMPLATES_PADRAO;   // usado onde o foco ainda não importa (ex.: SPLITS completo)
-function templatesParaSexo(sexo){ return sexo==="F" ? TEMPLATES_ENFASE_INFERIOR : TEMPLATES_PADRAO; }
+function templatesParaSexo(enfase){ return enfase==="F" ? TEMPLATES_ENFASE_INFERIOR : TEMPLATES_PADRAO; }
 
 
 /* ---------- assistente: monta a semana inteira a partir de cinco respostas ---------- */
@@ -451,13 +451,35 @@ const DIVISOES = {
   6:[["Push A","push"],["Pull A","pull"],["Legs A","legs"],["Push B","push"],["Pull B","pull"],["Legs B","legs"]]
 };
 
+/* Ênfase superior: a maioria dos dias vai para peito, costas, ombro e braço. */
+const DIVISOES_SUPERIOR = {
+  2:[["Superior","upper"],["Corpo inteiro","full"]],
+  3:[["Push · Empurrar","push"],["Pull · Puxar","pull"],["Inferior","lower"]],
+  4:[["Push · Empurrar","push"],["Pull · Puxar","pull"],["Inferior","lower"],["Superior · Braços e ombros","bracos"]],
+  5:[["Push · Empurrar","push"],["Pull · Puxar","pull"],["Inferior","lower"],["Superior","upper"],["Braços e ombros","bracos"]],
+  6:[["Push A","push"],["Pull A","pull"],["Inferior","lower"],["Push B","push"],["Pull B","pull"],["Braços e ombros","bracos"]]
+};
+
+/* Com ênfase inferior a própria divisão da semana muda: a maioria dos dias passa
+   a ser de perna/glúteo. Só trocar exercícios dentro do dia não daria ênfase
+   nenhuma — a proporção de dias é o que determina o volume semanal. */
+const DIVISOES_INFERIOR = {
+  2:[["Inferior · Glúteos e pernas","lower"],["Corpo inteiro","full"]],
+  3:[["Inferior A · Glúteos","gluteo"],["Superior","upper"],["Inferior B · Quadríceps","lower"]],
+  4:[["Inferior A · Quadríceps","lower"],["Superior","upper"],["Inferior B · Glúteos","gluteo"],["Posterior e panturrilha","lower"]],
+  5:[["Inferior A · Quadríceps","lower"],["Superior A","upper"],["Inferior B · Glúteos","gluteo"],["Superior B","upper"],["Posterior e panturrilha","lower"]],
+  6:[["Inferior A · Quadríceps","lower"],["Push · Empurrar","push"],["Inferior B · Glúteos","gluteo"],["Pull · Puxar","pull"],["Inferior C · Posterior","lower"],["Superior","upper"]]
+};
+
 const SLOTS = {
   push:["Peito","Peito","Ombros","Tríceps","Ombros","Tríceps","Peito","Tríceps"],
   pull:["Costas","Costas","Costas","Bíceps","Bíceps","Costas","Core","Bíceps"],
   legs:["Quadríceps","Posterior","Quadríceps","Glúteos","Panturrilha","Posterior","Core","Quadríceps"],
   upper:["Peito","Costas","Ombros","Costas","Peito","Bíceps","Tríceps","Ombros"],
   lower:["Quadríceps","Posterior","Glúteos","Quadríceps","Panturrilha","Posterior","Core","Glúteos"],
-  full:["Quadríceps","Peito","Costas","Ombros","Posterior","Core","Bíceps","Tríceps"]
+  full:["Quadríceps","Peito","Costas","Ombros","Posterior","Core","Bíceps","Tríceps"],
+  gluteo:["Glúteos","Posterior","Glúteos","Posterior","Glúteos","Quadríceps","Panturrilha","Core"],
+  bracos:["Bíceps","Tríceps","Ombros","Bíceps","Tríceps","Ombros","Costas","Peito"]
 };
 
 /* Quantos exercícios cabem no tempo informado. Conta 45s de execução por série,
@@ -471,16 +493,20 @@ function exerciciosNoTempo(minutos, obj){
 function gerarPlano(cfg){
   const obj = OBJETIVOS[cfg.objetivo] || OBJETIVOS.hipertrofia;
   const nEx = exerciciosNoTempo(cfg.tempo, obj);
-  const dias = DIVISOES[cfg.dias] || DIVISOES[3];
+  const tabela = cfg.enfase==="F" ? DIVISOES_INFERIOR
+               : cfg.enfase==="E" ? DIVISOES            // equilibrada
+               : DIVISOES_SUPERIOR;
+  const dias = tabela[cfg.dias] || tabela[3];
 
   return dias.map(([nome, tipo]) => {
     let slots = SLOTS[tipo].slice();
     // ênfase inferior: glúteo e posterior ganham espaço nos dias de perna
-    if(cfg.enfase==="F" && (tipo==="legs" || tipo==="lower" || tipo==="full")){
-      slots = ["Glúteos","Posterior"].concat(slots);
+    if(cfg.enfase==="F" && (tipo==="lower" || tipo==="full")){
+      slots = ["Glúteos"].concat(slots);
     }
-    // grupo priorizado entra na frente, se fizer sentido para o dia
-    if(cfg.foco && slots.includes(cfg.foco)) slots = [cfg.foco].concat(slots);
+    // grupos priorizados entram na frente, na ordem escolhida, se couberem no dia
+    const focos = (cfg.focos || []).filter(g => slots.includes(g));
+    if(focos.length) slots = focos.concat(slots);
 
     const usados = [];
     const items = [];
@@ -515,6 +541,7 @@ let exEdit = null;                  // exercício criado sendo editado
 let resumoEx = null;                // exercício que acabou de ser concluído
 let formCardio = null;              // registro de cardio sendo criado ou editado
 let assistente = null;              // montagem de plano personalizado
+let enfaseModelo = "E";             // ênfase escolhida na hora de aplicar um modelo pronto (não é salva)
 let cardioLimite = 15;
 let cardioBusca = "", cardioTodas = false;
 const mostrarResumo = () => !(S.meta && S.meta.semResumo);
@@ -844,7 +871,13 @@ function vTreinar(){
   if(!S.routines.length){
     h += `<div class="card stack"><h3>Monte seu treino</h3>
       <p class="muted" style="margin-top:4px">Escolha um modelo pronto e ajuste depois, ou monte a sua do zero.</p>
-      <div class="row" style="flex-wrap:wrap;margin-top:12px">
+      <p class="muted" style="font-size:12.5px;margin-top:2px">Ênfase</p>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px;margin-bottom:12px">
+        <button class="chip ${enfaseModelo==="E"?"on":""}" data-act="enfaseModeloEsc" data-v="E">Equilibrado</button>
+        <button class="chip ${enfaseModelo==="M"?"on":""}" data-act="enfaseModeloEsc" data-v="M">Ênfase superior</button>
+        <button class="chip ${enfaseModelo==="F"?"on":""}" data-act="enfaseModeloEsc" data-v="F">Ênfase inferior</button>
+      </div>
+      <div class="row" style="flex-wrap:wrap">
         <button class="btn sm" data-act="tpl" data-k="ABC">ABC</button>
         <button class="btn sm" data-act="tpl" data-k="PPL">Push/Pull/Legs</button>
         <button class="btn sm" data-act="tpl" data-k="UL">Superior/Inferior</button>
@@ -1171,7 +1204,13 @@ function vEdit(){
   if(!r.items.length){
     h += `<div class="card stack"><h3>Começar de um modelo pronto</h3>
       <p class="muted" style="font-size:13px;margin-top:4px">Preenche este treino com um conjunto de exercícios prontos; você edita como quiser depois.</p>
-      <div style="margin-top:10px">
+      <p class="muted" style="font-size:12.5px;margin-top:2px">Ênfase</p>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px;margin-bottom:12px">
+        <button class="chip ${enfaseModelo==="E"?"on":""}" data-act="enfaseModeloEsc" data-v="E">Equilibrado</button>
+        <button class="chip ${enfaseModelo==="M"?"on":""}" data-act="enfaseModeloEsc" data-v="M">Ênfase superior</button>
+        <button class="chip ${enfaseModelo==="F"?"on":""}" data-act="enfaseModeloEsc" data-v="F">Ênfase inferior</button>
+      </div>
+      <div>
         ${splitsAtuais().map(sp=>`<button class="pick" data-act="usarModeloDia" data-sp="${sp.k}" style="width:100%;text-align:left">
             <span class="grow ellip">${esc(sp.nome)}</span><span class="tag mus">${sp.exs} exerc.</span></button>`).join("")}
       </div></div>
@@ -1236,17 +1275,6 @@ function resumoCard(){
     <div class="row" style="gap:6px;margin-top:10px">
       <button class="chip ${on?"on":""}" data-act="semResumo" data-v="0">Mostrar</button>
       <button class="chip ${on?"":"on"}" data-act="semResumo" data-v="1">Não mostrar</button>
-    </div></div>`;
-}
-
-function sexoCard(){
-  const v = S.meta && S.meta.sexo;
-  return `<div class="card stack"><h3>Ênfase dos modelos prontos</h3>
-    <p class="muted" style="font-size:13px;margin-top:4px">Ajusta os modelos ABC, PPL, Superior/Inferior e Corpo inteiro — o foco muda o volume de posterior, glúteo e quadríceps, sem tirar nenhum grupo. Não afeta treinos que você já montou.</p>
-    <div class="row" style="gap:6px;margin-top:10px;flex-wrap:wrap">
-      <button class="chip ${v==="M"?"on":""}" data-act="setSexo" data-v="M">Padrão</button>
-      <button class="chip ${v==="F"?"on":""}" data-act="setSexo" data-v="F">Ênfase inferior</button>
-      <button class="chip ${!v?"on":""}" data-act="setSexo" data-v="">Sem preferência</button>
     </div></div>`;
 }
 
@@ -1443,7 +1471,7 @@ function vCardio(){
 }
 
 function vConfig(){
-  return temaCard() + sexoCard() + resumoCard() + meusExerciciosCard() + dataCard() +
+  return temaCard() + resumoCard() + meusExerciciosCard() + dataCard() +
     `<div class="card stack"><h3>Sobre</h3>
       <p class="muted" style="font-size:13px;margin-top:4px">Seus treinos ficam apenas neste aparelho. Não há conta, servidor nem sincronização — por isso o backup é o que garante os dados a longo prazo.</p>
       <p class="muted" style="font-size:13px;margin-top:8px">${S.sessions.length} treinos feitos, ${S.routines.length} treinos salvos, ${S.custom.length} exercícios criados por você.</p>
@@ -1815,7 +1843,7 @@ function renderFloat(){
       <div class="body">
         <label class="muted" style="font-size:12.5px">Ênfase</label>
         <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
-          ${chip("asEnfase","M",a.enfase,"Padrão")}${chip("asEnfase","F",a.enfase,"Ênfase inferior")}
+          ${chip("asEnfase","E",a.enfase,"Equilibrado")}${chip("asEnfase","M",a.enfase,"Ênfase superior")}${chip("asEnfase","F",a.enfase,"Ênfase inferior")}
         </div>
 
         <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Dias de treino por semana</label>
@@ -1834,10 +1862,11 @@ function renderFloat(){
         </div>
         <p class="muted" style="font-size:12px;margin-top:6px">${esc(obj.desc)}</p>
 
-        <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Grupo priorizado</label>
+        <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Grupos priorizados</label>
+        <p class="muted" style="font-size:12px;margin-top:2px">Pode escolher mais de um; entram primeiro nos dias em que cabem.</p>
         <div class="row" style="gap:6px;margin-top:6px;flex-wrap:wrap">
-          ${chip("asFoco","",a.foco,"Nenhum")}
-          ${Object.keys(POOL).map(g=>chip("asFoco",g,a.foco,g)).join("")}
+          <button class="chip ${!(a.focos||[]).length?"on":""}" data-act="asFocoLimpar">Nenhum</button>
+          ${Object.keys(POOL).map(g=>`<button class="chip ${(a.focos||[]).includes(g)?"on":""}" data-act="asFoco" data-v="${g}">${g}</button>`).join("")}
         </div>
 
         <div class="sep" style="margin-top:18px"></div>
@@ -1949,12 +1978,12 @@ function finish(){
 }
 
 function splitsAtuais(){
-  return Object.entries(templatesParaSexo(S.meta && S.meta.sexo)).flatMap(([grupo,dias]) =>
+  return Object.entries(templatesParaSexo(enfaseModelo)).flatMap(([grupo,dias]) =>
     dias.map(([nome,exs],i) => ({k:grupo+":"+i, nome, exs:exs.length, lista:exs})));
 }
 
 function applyTemplate(k){
-  templatesParaSexo(S.meta && S.meta.sexo)[k].forEach(([name,exs]) => {
+  templatesParaSexo(enfaseModelo)[k].forEach(([name,exs]) => {
     S.routines.push({id:uid(), name, items: exs.map(n => ({exId:slug(n), sets:3, reps:"8-12", rest:90}))});
   });
   view="treinar"; save(); render(); toast("Modelo adicionado. Ajuste os exercícios como quiser.");
@@ -2027,21 +2056,24 @@ document.addEventListener("click", ev => {
     case "fecharCardio": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       formCardio=null; renderFloat(); break;
     case "cardioTipo": lerFormCardio(); formCardio.tipo=t.dataset.v; cardioBusca=""; renderFloat(); break;
-    case "abrirAssistente": assistente = {enfase:(S.meta&&S.meta.sexo)||"M", dias:4, tempo:60,
-      objetivo:"hipertrofia", foco:""}; renderFloat(); break;
+    case "enfaseModeloEsc": enfaseModelo = t.dataset.v; render(); break;
+    case "abrirAssistente": assistente = {enfase:"E", dias:4, tempo:60,
+      objetivo:"hipertrofia", focos:[]}; renderFloat(); break;
     case "fecharAssistente": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       assistente=null; renderFloat(); break;
     case "asEnfase": assistente.enfase=t.dataset.v; renderFloat(); break;
     case "asDias": assistente.dias=+t.dataset.v; renderFloat(); break;
     case "asTempo": assistente.tempo=+t.dataset.v; renderFloat(); break;
     case "asObjetivo": assistente.objetivo=t.dataset.v; renderFloat(); break;
-    case "asFoco": assistente.foco=t.dataset.v; renderFloat(); break;
+    case "asFoco": { const g=t.dataset.v; const l=assistente.focos||[];
+      assistente.focos = l.includes(g) ? l.filter(x=>x!==g) : l.concat([g]);
+      renderFloat(); break; }
+    case "asFocoLimpar": assistente.focos=[]; renderFloat(); break;
     case "criarPlano": {
       const plano = gerarPlano(assistente);
       plano.forEach(d => S.routines.push({id:uid(), name:d.nome, items:d.items}));
       assistente=null; view="treinar"; save(); render();
       toast(plano.length+" treinos criados. Ajuste como quiser."); break; }
-    case "setSexo": S.meta=Object.assign({},S.meta||{},{sexo:t.dataset.v||null}); save(); render(); break;
     case "cardioTodas": lerFormCardio(); cardioTodas=true; renderFloat(); break;
     case "cardioMenos": lerFormCardio(); cardioTodas=false; renderFloat(); break;
     case "cardioInt": lerFormCardio(); formCardio.intensidade = formCardio.intensidade===t.dataset.v ? "" : t.dataset.v;
