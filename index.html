@@ -86,6 +86,9 @@
        color:var(--muted);font-size:16px;display:flex;align-items:center;justify-content:center}
   .chk.on{background:var(--green);border-color:var(--green);color:var(--surface)}
   .ex.done .num, .setrow.ok .num{background:var(--ok-bg);border-color:var(--ok-line)}
+  .ex.pulado{border-style:dashed;opacity:.72}
+  .dot.pulado{background:var(--muted);opacity:.55}
+  .dot.pulado.now{outline:2px solid var(--blue);outline-offset:-1px}
   /* nav */
   nav{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--nav-bg);border-top:1px solid var(--line);
       display:flex;padding-bottom:env(safe-area-inset-bottom);max-width:672px;margin:0 auto}
@@ -637,6 +640,7 @@ function migrar(){
     if(!Array.isArray(r.items)) r.items=[];
     r.items.forEach(it => {
       it.sets = Math.min(20, Math.max(1, parseInt(it.sets,10)||3));
+      if(it.padraoTipos && typeof it.padraoTipos!=="object") delete it.padraoTipos;
       it.rest = Math.min(600, Math.max(0, parseInt(it.rest,10)||90));
       if(typeof it.reps!=="string") it.reps = String(it.reps||"");
       it.reps = it.reps.slice(0,12);
@@ -971,7 +975,8 @@ function proximoPendente(depois){
   const n=S.active.entries.length;
   for(let k=1;k<=n;k++){
     const i=(depois+k)%n;
-    if(S.active.entries[i].sets.some(x=>!x.done)) return i;
+    const en=S.active.entries[i];
+    if(!en.skipped && en.sets.some(x=>!x.done)) return i;
   }
   return null;
 }
@@ -1079,12 +1084,14 @@ function vSessionFoco(){
   if(focoIdx>=a.entries.length) focoIdx=Math.max(0,a.entries.length-1);
   const en=a.entries[focoIdx], ex=exById(en.exId);
   const total=en.sets.length, done=en.sets.filter(s=>s.done).length;
-  const cls = done===0 ? "" : (done===total ? "done" : "doing");
+  const puladoFoco = !!en.skipped && !en.sets.some(s=>s.done);
+  const cls = puladoFoco ? "pulado" : (done===0 ? "" : (done===total ? "done" : "doing"));
 
   let h = `<div class="dots">${a.entries.map((e,i)=>{
       const d=e.sets.filter(s=>s.done).length, t=e.sets.length;
-      const est = ((t>0 && d===t) ? "done " : "") + (i===focoIdx ? "now" : "");
-      return `<button class="dot ${est}" data-act="irPara" data-i="${i}" aria-label="Exercício ${i+1}"></button>`;
+      const pl = !!e.skipped && !d;
+      const est = pl ? "pulado" : ((t>0 && d===t) ? "done " : "") + (i===focoIdx ? "now" : "");
+      return `<button class="dot ${est} ${i===focoIdx?"now":""}" data-act="irPara" data-i="${i}" aria-label="Exercício ${i+1}${pl?", pulado":""}"></button>`;
     }).join("")}</div>
     <div class="between" style="margin-bottom:8px">
       <button class="btn sm" data-act="foco" data-d="-1" ${focoIdx===0?"disabled":""} aria-label="Exercício anterior">◀</button>
@@ -1096,7 +1103,7 @@ function vSessionFoco(){
     </div>
     <div class="ex ${cls}" id="foco">
       <div class="between" style="align-items:center">
-        <h3 class="grow ellip">${esc(ex.name)}</h3>
+        <h3 class="grow ellip">${esc(ex.name)}${puladoFoco?` <span class="tag" style="background:var(--track);color:var(--muted)">pulado</span>`:""}</h3>
         <button class="btn ghost sm" data-act="exMenu" data-i="${focoIdx}" aria-label="Opções"
           style="font-size:18px;line-height:1;padding:4px 8px">⋯</button>
       </div>
@@ -1114,7 +1121,8 @@ function proximoPendente(depois){
   const n=S.active.entries.length;
   for(let k=1;k<=n;k++){
     const i=(depois+k)%n;
-    if(S.active.entries[i].sets.some(x=>!x.done)) return i;
+    const en=S.active.entries[i];
+    if(!en.skipped && en.sets.some(x=>!x.done)) return i;
   }
   return null;
 }
@@ -1167,8 +1175,9 @@ function vSession(){
   a.entries.forEach((en,ei) => {
     const ex=exById(en.exId);
     const total=en.sets.length, done=en.sets.filter(s=>s.done).length;
-    const cls = done===0 ? "" : (done===total ? "done" : "doing");
-    const aberto = sessaoAberta(ei,en);
+    const pulado = !!en.skipped && !en.sets.some(s=>s.done);
+    const cls = pulado ? "pulado" : (done===0 ? "" : (done===total ? "done" : "doing"));
+    const aberto = pulado ? false : sessaoAberta(ei,en);
     const feitas = en.sets.filter(s=>s.done && valida(s));
     const soAquece = !feitas.length && en.sets.some(s=>s.done && !valida(s));
 
@@ -1177,9 +1186,10 @@ function vSession(){
         aria-expanded="${aberto?"true":"false"}" aria-label="${aberto?"Recolher":"Abrir"} ${esc(ex.name)}"
         style="cursor:pointer;align-items:center">
         <div class="grow">
-          <h3 class="ellip">${esc(ex.name)}</h3>
+          <h3 class="ellip">${esc(ex.name)}${pulado?` <span class="tag" style="background:var(--track);color:var(--muted)">pulado</span>`:""}</h3>
           ${aberto ? "" : `<p class="muted" style="font-size:12.5px">${
-              feitas.length ? feitas.length+" série"+(feitas.length===1?"":"s")+" · melhor "+melhorSerie(feitas)
+              pulado ? "você pulou este exercício"
+              : feitas.length ? feitas.length+" série"+(feitas.length===1?"":"s")+" · melhor "+melhorSerie(feitas)
                             : (soAquece ? "só aquecimento/preparação" : "sem séries")}</p>`}
         </div>
         <button class="btn ghost sm" data-act="exMenu" data-i="${ei}" aria-label="Opções de ${esc(ex.name)}"
@@ -1693,6 +1703,8 @@ function renderFloat(){
         </div>
 
         <button class="btn wide stack" data-act="swapEx" data-i="${ei}">Trocar por outro exercício</button>
+        <button class="btn wide" style="margin-top:8px" data-act="pularEx" data-i="${ei}">${en.skipped?"Cancelar pular":"Pular este exercício"}</button>
+        ${!en.skipped?`<p class="muted" style="font-size:12.5px;margin-top:6px">Fica de fora do volume e da navegação de pendências. Marcar uma série cancela automaticamente.</p>`:""}
         <button class="btn wide danger" style="margin-top:8px" data-act="rmEx" data-i="${ei}">Remover do treino</button>
         <p class="muted" style="font-size:12.5px;margin-top:14px">Dica: toque no número de uma série para mudar o tipo — válida, <strong style="color:var(--amber)">A</strong>quecimento ou <strong style="color:var(--blue)">P</strong>reparatória. Aquecimento e preparatória ficam fora do volume, da contagem e dos recordes.</p>
       </div></div></div>`);
@@ -1948,10 +1960,23 @@ function newSession(routine){
   const entries = (routine ? routine.items : []).map(it => {
     const prev = lastSetsFor(it.exId);
     const sets=[];
-    const nSeries=Math.min(20, Math.max(1, parseInt(it.sets,10)||3));
+    // sequência de tipos aprendida da última vez: A's primeiro, depois P's, depois T's
+    const pad = it.padraoTipos;
+    const seqTipos = pad ? Array(pad.A||0).fill("A").concat(Array(pad.P||0).fill("P")) : [];
+    const nValidasAlvo = pad ? (pad.T || Math.min(20, Math.max(1, parseInt(it.sets,10)||3)))
+                              : Math.min(20, Math.max(1, parseInt(it.sets,10)||3));
+    const nSeries = seqTipos.length + nValidasAlvo;
+    let iValida = 0;
     for(let i=0;i<nSeries;i++){
-      const p = prev ? prev[Math.min(i, prev.length-1)] : null;
-      sets.push({w:"", r:"", done:false, sug: p ? {w:fmt(num(p.w)), r:String(num(p.r))} : null});
+      const tipo = i < seqTipos.length ? seqTipos[i] : "T";
+      const st = {w:"", r:"", done:false, sug:null};
+      if(tipo!=="T") st.tipo = tipo;
+      if(tipo==="T"){
+        const p = prev ? prev[Math.min(iValida, prev.length-1)] : null;
+        if(p) st.sug = {w:fmt(num(p.w)), r:String(num(p.r))};
+        iValida++;
+      }
+      sets.push(st);
     }
     return {exId:it.exId, rest:it.rest===0?0:(it.rest||90), reps:it.reps||"", note:"", sets};
   });
@@ -1959,11 +1984,29 @@ function newSession(routine){
   view="treinar"; naSessao=true; focoIdx=0; wake(true); save(); render();
 }
 
+/* Depois de concluir, ensina à rotina quantas séries de cada tipo essa pessoa
+   costuma fazer nesse exercício — para a PRÓXIMA sessão já oferecer as mesmas
+   caixas de aquecimento/preparatória, sem forçar a marcar de novo toda vez. */
+function aprenderTiposSeries(a){
+  if(!a.routineId) return;
+  const r = S.routines.find(x=>x.id===a.routineId);
+  if(!r) return;
+  a.entries.forEach(en => {
+    const it = r.items.find(x=>x.exId===en.exId);
+    if(!it) return;
+    const conta = {A:0, P:0, T:0};
+    en.sets.forEach(st => { if(st.done) conta[tipoSerie(st)]++; });
+    if(conta.A || conta.P || conta.T) it.padraoTipos = conta;
+  });
+}
+
 function finish(){
   const a=S.active; if(!a) return;
+  aprenderTiposSeries(a);
+  const algumaSerieFeita = a.entries.some(en => en.sets.some(s=>s.done));
+  if(!algumaSerieFeita){ toast("Marque ao menos uma série antes de concluir."); return; }
   const entries=a.entries.map(en=>({exId:en.exId, note:en.note||"", sets:en.sets.filter(s=>s.done&&valida(s)).map(s=>({w:num(s.w),r:num(s.r),done:true}))}))
                          .filter(en=>en.sets.length);
-  if(!entries.length){ toast("Marque ao menos uma série antes de concluir."); return; }
   const prs=[];
   entries.forEach(en=>{
     const before=bestFor(en.exId,null);
@@ -2028,7 +2071,7 @@ document.addEventListener("click", ev => {
 
   // ações que só fazem sentido com treino em andamento
   if(!S.active && ["check","addSet","delSet","tipoSerie","setRest","rmEx","moverEx","swapEx",
-                   "foco","irPara","dobrar","exMenu","pickWorkout","cancelWorkout","finish"].includes(a)){
+                   "foco","irPara","dobrar","exMenu","pickWorkout","cancelWorkout","finish","pularEx"].includes(a)){
     render(); return;
   }
   switch(a){
@@ -2189,6 +2232,10 @@ document.addEventListener("click", ev => {
     case "repeat": { const s=S.sessions.find(x=>x.id===id);
       if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break; }
       newSession({id:s.routineId,name:s.name,items:s.entries.map(en=>({exId:en.exId,sets:en.sets.length,reps:"",rest:90}))}); break; }
+    case "pularEx": { const en=S.active.entries[i]; en.skipped=!en.skipped;
+      let alvo=focoIdx;
+      if(en.skipped && modo()==="foco" && i===focoIdx){ const p=proximoPendente(i); if(p!==null) alvo=p; }
+      exMenu=null; focoIdx=alvo; save(); render(); break; }
     case "check": { const st=S.active.entries[i].sets[j];
       if(!st.done && st.sug){                       // campo em branco assume a sugestão
         if(st.w==="") st.w=st.sug.w;
@@ -2197,6 +2244,7 @@ document.addEventListener("click", ev => {
       if(!st.done && (num(st.w)===0 && num(st.r)===0)){ toast("Preencha carga e repetições."); break; }
       st.done=!st.done; ultimoMexido=i; dobrado.delete(i);
       const en=S.active.entries[i];
+      if(st.done) en.skipped=false;
       if(st.done && mostrarResumo() && en.sets.every(x=>x.done)) resumoEx=i;
       if(st.done && (S.active.entries[i].rest||0)>0) startRest(S.active.entries[i].rest);
       save(); render(); break; }
