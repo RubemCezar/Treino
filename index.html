@@ -156,6 +156,18 @@
         border-color:var(--blue);transform-origin:center;opacity:.97}
   .arrastavel.deslocando{transition:transform .16s ease}
   @media (prefers-reduced-motion:reduce){ .arrastavel.deslocando{transition:none} }
+  .meses{display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px;scrollbar-width:none;scroll-behavior:smooth}
+  .meses::-webkit-scrollbar{display:none}
+  .mes-chip{flex:none;min-width:52px;border:1px solid var(--line);background:var(--surface);color:var(--muted);
+            border-radius:10px;padding:6px 8px;font:inherit;font-size:12px;cursor:pointer;display:flex;flex-direction:column;
+            align-items:center;gap:2px;text-transform:capitalize}
+  .mes-chip b{font-size:13px;font-weight:650;color:var(--muted)}
+  .mes-chip.tem b{color:var(--blue)}
+  .mes-chip.atual{border-color:var(--muted)}
+  .mes-chip.on{background:var(--blue-soft);border-color:var(--blue);color:var(--blue)}
+  .mes-chip.on b{color:var(--blue)}
+  body.com-barra .wrap{padding-bottom:210px}
+  body.com-duas-barras .wrap{padding-bottom:270px}
   .empty{text-align:center;padding:28px 16px;color:var(--muted)}
   a{color:var(--blue)}
   :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
@@ -540,7 +552,9 @@ let voltarPara = "treinar"; // de onde configurações/calendário foram abertos
 let calMes = null, calDia = null;   // mês exibido e dia selecionado no calendário
 let rotinaAberta = null;            // rotina expandida na tela inicial
 let histLimite = 15;                // quantos treinos o histórico desenha por vez
-let exEdit = null;                  // exercício criado sendo editado
+let exEdit = null;
+let progressMaq = "";
+let progLimite = 12;             // sessões listadas no Progresso antes do "ver mais"            // filtro de máquina no Progresso                  // exercício criado sendo editado
 let resumoEx = null;                // exercício que acabou de ser concluído
 let formCardio = null;              // registro de cardio sendo criado ou editado
 let assistente = null;              // montagem de plano personalizado
@@ -620,11 +634,13 @@ async function load(){
    e também depois de restaurar um backup antigo. */
 function migrar(){
   if(!Array.isArray(S.cardio)) S.cardio=[];
+  if(Array.isArray(S.sessions)) S.sessions.sort((a,b)=>(a.end||a.start||0)-(b.end||b.start||0));
   const arrumaSets = en => {
     if(!en || !Array.isArray(en.sets)) return;
     if(en.rest===undefined) en.rest=90;
     if(en.reps===undefined) en.reps="";
     if(en.note===undefined) en.note="";
+    if(en.maquina===undefined) en.maquina="";
     en.sets.forEach(st => {
       if(!st.tipo){ st.tipo = st.warm ? "A" : "T"; delete st.warm; }
       if(typeof st.sug === "object" && st.sug !== null) return;   // já é o formato novo
@@ -683,11 +699,13 @@ function volume(entries){
 }
 function doneSets(entries){ let n=0; entries.forEach(en=>en.sets.forEach(s=>{if(s.done&&valida(s))n++})); return n; }
 
-function historyFor(exId){
+function historyFor(exId, maquina){
+  const alvo = maquina ? maquina.trim().toLowerCase() : null;
   const out=[];
   S.sessions.forEach(se => {
     const en = se.entries.find(e => e.exId===exId);
     if(!en) return;
+    if(alvo && (en.maquina||"").trim().toLowerCase()!==alvo) return;
     const sets = en.sets.filter(s=>s.done && valida(s) && (num(s.w)>0 || num(s.r)>0));
     if(!sets.length) return;
     let bw=0, be=0, br=0, vol=0, reps=0, bset=null;
@@ -699,11 +717,17 @@ function historyFor(exId){
   });
   return out.sort((a,b)=>a.t-b.t);
 }
-function bestFor(exId, exceptId){
+/* PR (recorde) também é escopado por máquina quando ela está preenchida: um
+   aparelho diferente calibra peso de outro jeito, então misturar recordes de
+   máquinas diferentes não conta uma história real de progresso. Sem máquina
+   informada, o comportamento é o de sempre — olha tudo junto. */
+function bestFor(exId, exceptId, maquina){
+  const alvo = maquina ? maquina.trim().toLowerCase() : null;
   let w=0,e=0;
   S.sessions.forEach(se => {
     if(exceptId && se.id===exceptId) return;
     const en = se.entries.find(x=>x.exId===exId); if(!en) return;
+    if(alvo && (en.maquina||"").trim().toLowerCase()!==alvo) return;
     en.sets.forEach(s=>{ if(!s.done || !valida(s)) return; const W=num(s.w), R=num(s.r);
       if(W>w) w=W; const E=e1rm(W,R); if(E>e) e=E; });
   });
@@ -713,8 +737,28 @@ function bestFor(exId, exceptId){
    o mesmo exercício no Push e no Upper vem em ordem e fadiga diferentes, então
    comparar entre treinos distorce. Só cai para outro treino se nunca tiver sido
    feito neste — aí a tela avisa. */
-function ultimaExecucao(exId, rotId){
+/* Com máquina informada, ela é o critério mais forte de todos: primeiro tenta
+   achar essa máquina no mesmo treino, depois essa máquina em qualquer treino, e
+   só then cai para a busca antiga (ignorando máquina). Sem máquina informada,
+   nada muda — é a busca de sempre. */
+function ultimaExecucao(exId, rotId, maquina){
   const id = rotId===undefined ? (S.active ? S.active.routineId : null) : rotId;
+  const alvo = maquina ? maquina.trim().toLowerCase() : null;
+
+  if(alvo){
+    let outraMaquina = null;
+    for(let i=S.sessions.length-1;i>=0;i--){
+      const se = S.sessions[i];
+      const en = se.entries.find(x=>x.exId===exId);
+      if(!en || !en.sets.some(s=>s.done && valida(s))) continue;
+      if((en.maquina||"").trim().toLowerCase()!==alvo) continue;   // com máquina definida, só conta a mesma
+      const sets = en.sets.filter(s=>s.done && valida(s));
+      if(se.routineId === id) return {sets, mesmoTreino:true, nome:se.name};
+      if(!outraMaquina) outraMaquina = {sets, mesmoTreino:false, nome:se.name};
+    }
+    return outraMaquina;   // pode ser null: primeira vez nessa máquina
+  }
+
   let fora = null;
   for(let i=S.sessions.length-1;i>=0;i--){
     const se = S.sessions[i];
@@ -726,8 +770,8 @@ function ultimaExecucao(exId, rotId){
   }
   return fora;
 }
-function lastSetsFor(exId, rotId){
-  const u = ultimaExecucao(exId, rotId);
+function lastSetsFor(exId, rotId, maquina){
+  const u = ultimaExecucao(exId, rotId, maquina);
   return u ? u.sets : null;
 }
 function weekStats(){
@@ -753,6 +797,11 @@ function cardioDoDia(ts){
   const d=new Date(ts), ini=new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime();
   return S.cardio.filter(c => c.t>=ini && c.t<ini+864e5);
 }
+function fmtKm(n){
+  const r = Math.round(n*100)/100;
+  return (Number.isInteger(r*10) ? (Math.round(r*10)/10) : r).toString().replace(".",",");
+}
+
 function ritmo(c){
   if(!(c.km>0) || !(c.min>0)) return "";
   const segPorKm = (c.min*60)/c.km;
@@ -760,7 +809,7 @@ function ritmo(c){
 }
 function resumoCardio(c){
   const partes=[c.min+" min"];
-  if(c.km>0) partes.push(fmt(c.km)+" km");
+  if(c.km>0) partes.push(fmtKm(c.km)+" km");
   if(c.km>0 && c.min>0) partes.push(ritmo(c));
   if(c.intensidade) partes.push(c.intensidade.toLowerCase());
   return partes.join(" · ");
@@ -902,7 +951,7 @@ function vTreinar(){
           <div class="grow" data-act="abrirRotina" data-id="${r.id}" role="button" tabindex="0"
             aria-expanded="${aberta?"true":"false"}" style="cursor:pointer">
             <h3 class="ellip">${esc(r.name)}${ehProximo?` <span class="tag prox">Próximo</span>`:""}</h3>
-            <p class="muted" style="font-size:13px">${r.items.length} exercícios${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"} ${aberta?"▲":"▼"}</p>
+            <p class="muted" style="font-size:13px">${r.items.length} exercícios${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"}&nbsp;${aberta?"▲":"▼"}</p>
           </div>
           <button class="btn primary" data-act="start" data-id="${r.id}">Treinar</button>
         </div>
@@ -960,7 +1009,7 @@ function vTreinar(){
         <div class="grow" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
           aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
           <h3 class="ellip">${esc(se.name)}</h3>
-          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${doneSets(se.entries)} séries ${aberto?"▲":"▼"}</p></div>
+          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${doneSets(se.entries)} séries&nbsp;${aberto?"▲":"▼"}</p></div>
         <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir</button></div>
         ${aberto ? `<div class="sep"></div>` + listaExercicios(se, false) : ""}</div>`;
     });
@@ -968,60 +1017,18 @@ function vTreinar(){
   return h;
 }
 
-/* Índice do próximo exercício com série pendente, a partir de `depois` e dando
-   a volta na lista. null quando não sobra nada — é o único caso em que "Concluir
-   treino" deve aparecer no resumo. */
-function proximoPendente(depois){
-  const n=S.active.entries.length;
-  for(let k=1;k<=n;k++){
-    const i=(depois+k)%n;
-    const en=S.active.entries[i];
-    if(!en.skipped && en.sets.some(x=>!x.done)) return i;
-  }
-  return null;
-}
-
-function metricasEx(sets){
-  const val = sets.filter(s=>s.done!==false && valida(s));
-  let reps=0, carga=0, indice=0, volume=0;
-  val.forEach(s=>{ const w=num(s.w), r=num(s.r);
-    reps+=r; volume+=w*r; if(w>carga) carga=w;
-    const e=e1rm(w,r); if(e>indice) indice=e; });
-  return {series:val.length, reps, carga, indice, volume};
-}
-
-function comparativoEx(exId, setsAtuais){
-  const agora = metricasEx(setsAtuais);
-  const u = ultimaExecucao(exId);
-  return {agora, antes: u ? metricasEx(u.sets) : null,
-          mesmoTreino: u ? u.mesmoTreino : true, ondeFoi: u ? u.nome : ""};
-}
-
-function melhorSerie(sets){
-  let b=null;
-  sets.forEach(s => { const w=num(s.w), r=num(s.r);
-    if(!b || w>b.w || (w===b.w && r>b.r)) b={w,r}; });
-  return b ? par(b.w,b.r) : "—";
-}
-
-function sessaoAberta(ei, en){
-  const total=en.sets.length, done=en.sets.filter(s=>s.done).length;
-  // pronto = fechado por padrão, menos o exercício em que se acabou de mexer
-  const padrao = !(total>0 && done===total) || ei===ultimoMexido;
-  return dobrado.has(ei) ? !padrao : padrao;
-}
-
 function cardExercicio(en, ei, foco, cabecalho){
   const ex=exById(en.exId);
-  const prev = lastSetsFor(en.exId);
-  const rec = bestFor(en.exId, null);
+  const prev = lastSetsFor(en.exId, undefined, en.maquina);
+  const rec = bestFor(en.exId, null, en.maquina);
   let prIdx=-1, prBest=0;
   if(rec.w>0) en.sets.forEach((st,si) => { if(!st.done || !valida(st)) return;
     const W=num(st.w), R=num(st.r), E=e1rm(W,R);
     if(W>0 && (W>rec.w+0.001 || E>rec.e+0.001) && E>prBest){ prBest=E; prIdx=si; } });
 
   let h = `<p class="muted" style="font-size:12.5px;margin-top:2px">${esc(ex.muscle)}${
-    prev ? (foco ? "" : " · última: "+prev.map(x=>par(x.w,x.r)).join(", ")) : " · primeira vez"}</p>`;
+    prev ? (foco ? "" : " · última: "+prev.map(x=>par(x.w,x.r)).join(", "))
+         : (en.maquina ? " · primeira vez nesta máquina" : " · primeira vez")}</p>`;
 
   if(foco){
     if(rec.w>0 || rec.e>0){
@@ -1033,8 +1040,9 @@ function cardExercicio(en, ei, foco, cabecalho){
     }
     h += `<input class="field" style="margin-top:10px;font-size:14px" data-note="${ei}" data-k="n-${ei}"
       value="${esc(en.note||"")}" placeholder="Anotação: pegada, banco, número da máquina...">`;
-  } else if(en.note){
-    h += `<p class="muted" style="font-size:12.5px;margin-top:4px;font-style:italic">${esc(en.note)}</p>`;
+  } else {
+    const extra = [en.maquina?`🔧 ${esc(en.maquina)}`:"", en.note?esc(en.note):""].filter(Boolean).join(" · ");
+    if(extra) h += `<p class="muted" style="font-size:12.5px;margin-top:4px;font-style:italic">${extra}</p>`;
   }
 
   const comHist = foco && !!prev;
@@ -1048,14 +1056,14 @@ function cardExercicio(en, ei, foco, cabecalho){
     const ehValida = valida(st);
     if(ehValida) nValida++;
     const rotulo = ehValida ? String(nValida) : TIPOS_SERIE[tipoSerie(st)].rot;
-    const p = prev ? prev[Math.min(si, prev.length-1)] : null;
+    const p = (ehValida && prev) ? prev[Math.min(nValida-1, prev.length-1)] : null;
     h += `<div class="setrow ${comHist?"comhist":""} ${st.done?"ok":""}">
       <button class="setno" data-act="tipoSerie" data-i="${ei}" data-j="${si}"
         title="Série ${TIPOS_SERIE[tipoSerie(st)].nome} — toque para mudar"
         aria-label="${ehValida?"Série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}. Toque para mudar o tipo"
         style="border:0;background:none;font:inherit;cursor:pointer;${ehValida?"":"color:"+TIPOS_SERIE[tipoSerie(st)].cor+";font-weight:650"}">${rotulo}</button>
-      <input class="num" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="${st.sug?esc(st.sug.r):(en.reps?esc(en.reps):"0")}" aria-label="Repetições, ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}">
-      <input class="num" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="${st.sug?esc(st.sug.w):"0"}" aria-label="Carga em kg, ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}${st.sug?", sugestão "+esc(st.sug.w):""}">
+      <input class="num" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="${st.sug?esc(st.sug.r):(ehValida?(en.reps?esc(en.reps):"0"):"—")}" aria-label="Repetições, ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}">
+      <input class="num" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="${st.sug?esc(st.sug.w):(ehValida?"0":"—")}" aria-label="Carga em kg, ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}${st.sug?", sugestão "+esc(st.sug.w):""}">
       ${comHist?`<span class="hist">${p?par(p.w,p.r):"—"}</span>`:""}
       <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Concluir ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome} de ${esc(ex.name)}">✓</button>
     </div>${si===prIdx?`<div style="margin:-2px 0 4px 34px"><span class="tag pr">recorde pessoal</span></div>`:""}`;
@@ -1136,9 +1144,9 @@ function metricasEx(sets){
   return {series:val.length, reps, carga, indice, volume};
 }
 
-function comparativoEx(exId, setsAtuais){
+function comparativoEx(exId, setsAtuais, maquina){
   const agora = metricasEx(setsAtuais);
-  const u = ultimaExecucao(exId);
+  const u = ultimaExecucao(exId, undefined, maquina);
   return {agora, antes: u ? metricasEx(u.sets) : null,
           mesmoTreino: u ? u.mesmoTreino : true, ondeFoi: u ? u.nome : ""};
 }
@@ -1324,7 +1332,7 @@ function listaExercicios(se, aberto){
     const sets=en.sets.filter(x=>x.done);
     if(!sets.length) return "";
     return `<div style="padding:5px 0">
-      <div class="between"><span class="ellip grow">${esc(exById(en.exId).name)}</span>
+      <div class="between"><span class="ellip grow">${esc(exById(en.exId).name)}${en.maquina?` <span class="muted" style="font-size:12px">· ${esc(en.maquina)}</span>`:""}</span>
         <span class="muted" style="font-size:13px;white-space:nowrap">${sets.length} série${sets.length===1?"":"s"}</span></div>
       ${aberto ? `<p class="muted tnum" style="font-size:13px;margin-top:3px">${sets.map(x=>par(x.w,x.r)).join("   ")}</p>` : ""}
     </div>`;
@@ -1362,6 +1370,31 @@ function cardSessao(se, aberto){
   </div>`;
 }
 
+/* quantos meses o mês de ts está à frente (+) ou atrás (-) do mês atual */
+function difMeses(ts){ const a=new Date(ts), h=new Date();
+  return (a.getFullYear()-h.getFullYear())*12 + (a.getMonth()-h.getMonth()); }
+
+function centrarMes(){
+  const f=document.getElementById("faixaMeses"); if(!f) return;
+  const on=f.querySelector(".mes-chip.on"); if(!on) return;
+  f.scrollLeft = on.offsetLeft - f.clientWidth/2 + on.clientWidth/2;
+}
+
+function faixaMeses(base){
+  const h=new Date(); let chips="";
+  for(let k=-12;k<=6;k++){
+    const d=new Date(h.getFullYear(), h.getMonth()+k, 1), ts=d.getTime();
+    const n=sessoesDoMes(ts).length + S.cardio.filter(c=>{const x=new Date(c.t);
+      return x.getFullYear()===d.getFullYear() && x.getMonth()===d.getMonth();}).length;
+    const nome=d.toLocaleDateString("pt-BR",{month:"short"}).replace(".","");
+    const sel = d.getFullYear()===base.getFullYear() && d.getMonth()===base.getMonth();
+    chips += `<button class="mes-chip ${sel?"on":""} ${n?"tem":""} ${k===0?"atual":""}" data-act="irMes" data-ts="${ts}"
+      aria-label="${d.toLocaleDateString("pt-BR",{month:"long",year:"numeric"})}${n?", "+n+" atividades":""}">
+      <span>${nome}${d.getMonth()===0||k===-12?" "+String(d.getFullYear()).slice(2):""}</span><b>${n||"·"}</b></button>`;
+  }
+  return chips;
+}
+
 function vCalendario(){
   const base=new Date(calMes || inicioMes(Date.now()));
   const ano=base.getFullYear(), mes=base.getMonth();
@@ -1383,15 +1416,16 @@ function vCalendario(){
 
   let h = `<div class="between stack">
       <button class="btn sm" data-act="mes" data-d="-1" aria-label="Mês anterior">◀</button>
-      <h2 style="text-transform:capitalize">${esc(nome)}</h2>
-      <button class="btn sm" data-act="mes" data-d="1" ${ehMesAtual?"disabled":""} aria-label="Próximo mês">▶</button>
+      <h2>${esc(nome.charAt(0).toUpperCase()+nome.slice(1))}</h2>
+      <button class="btn sm" data-act="mes" data-d="1" ${difMeses(base.getTime())>=12?"disabled":""} aria-label="Próximo mês">▶</button>
     </div>
     <div class="stats stack">
       <div class="stat"><b>${st.count}</b><span>treinos</span></div>
       <div class="stat"><b>${st.series}</b><span>séries</span></div>
       <div class="stat"><b>${minCardio}</b><span>min de cardio</span></div>
     </div>
-    <div class="card stack" style="padding:12px 10px">
+    <div class="meses stack" id="faixaMeses">${faixaMeses(base)}</div>
+    <div class="card stack" id="gradeCal" style="padding:12px 10px">
       <div class="cal">${["dom","seg","ter","qua","qui","sex","sáb"].map(d=>`<span class="wd">${d}</span>`).join("")}</div>
       <div class="cal" style="margin-top:2px">
         ${Array.from({length:primeiro},()=>`<span class="dia vazio"></span>`).join("")}
@@ -1503,11 +1537,18 @@ function vHistorico(){
 }
 
 function vProgresso(){
-  const ids=[...new Set(S.sessions.flatMap(s=>s.entries.map(e=>e.exId)))]
-    .filter(id=>historyFor(id).length).sort((a,b)=>exById(a).name.localeCompare(exById(b).name));
+  // uma passada só pelo histórico: quais exercícios têm ao menos uma série válida
+  const comDados=new Set();
+  S.sessions.forEach(se=>se.entries.forEach(en=>{
+    if(!comDados.has(en.exId) && en.sets.some(x=>x.done && valida(x) && (num(x.w)>0 || num(x.r)>0))) comDados.add(en.exId);
+  }));
+  const ids=[...comDados].sort((a,b)=>exById(a).name.localeCompare(exById(b).name));
   if(!ids.length) return `<div class="empty">Sem dados ainda.<br>Registre alguns treinos para ver a evolução de carga.</div>`;
   if(!progressEx || !ids.includes(progressEx)) progressEx = ids[0];
-  const hist = historyFor(progressEx);
+  const maquinas = maquinasDoExercicio(progressEx);
+  if(progressMaq && !maquinas.some(m=>m.toLowerCase()===progressMaq.toLowerCase())) progressMaq="";
+  const hist = historyFor(progressEx, progressMaq||undefined);
+  if(!hist.length) progressMaq="";
   const comCarga = hist.some(p=>p.bw>0);
   const val = p => comCarga ? p.be : p.br;
   const bw = Math.max(...hist.map(p=>p.bw));
@@ -1521,7 +1562,11 @@ function vProgresso(){
   let h = `<div class="card stack"><label class="muted" style="font-size:12.5px">Exercício</label>
       <select class="field" style="margin-top:6px" data-act="selEx">
         ${ids.map(id=>`<option value="${id}" ${id===progressEx?"selected":""}>${esc(exById(id).name)}</option>`).join("")}
-      </select></div>
+      </select>
+      ${maquinas.length ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:10px">
+        <button class="chip ${!progressMaq?"on":""}" data-act="progMaq" data-v="">Todas as máquinas</button>
+        ${maquinas.map(m=>`<button class="chip ${progressMaq.toLowerCase()===m.toLowerCase()?"on":""}" data-act="progMaq" data-v="${esc(m)}">${esc(m)}</button>`).join("")}
+      </div>` : ""}</div>
     <div class="stats stack">
       ${comCarga
         ? `<div class="stat"><b>${fmt(bw)} kg</b><span>maior carga</span></div>
@@ -1539,11 +1584,16 @@ function vProgresso(){
         : "Exercício sem carga externa: a curva acompanha a melhor série em repetições."}</p>
     </div>
     <h2 class="stack">Sessão a sessão</h2>`;
-  hist.slice().reverse().forEach(p => {
+  // lista mais recente primeiro, paginada: com um ano de treino passava de 200 cartões
+  const recentes = hist.slice().reverse();
+  recentes.slice(0, progLimite).forEach(p => {
     h += `<div class="card stack" style="padding:11px 14px"><div class="between">
       <span>${dateLabel(p.t)}</span>
       <span class="tnum muted" style="font-size:14px">melhor série ${parKg(p.bset.w,p.bset.r)}${p.vol>0?" · "+ton(p.vol):""}</span></div></div>`;
   });
+  if(recentes.length > progLimite){
+    h += `<div class="stack"><button class="btn wide" data-act="maisProg">Ver mais sessões (${recentes.length-progLimite} restantes)</button></div>`;
+  }
   h += `<div class="stack"><p class="muted" style="font-size:12.5px">${comCarga?"Volume total acumulado neste exercício: "+ton(vol)+".":"Total de repetições acumuladas: "+repsTot+"."}</p></div>`;
   return h;
 }
@@ -1626,6 +1676,9 @@ function renderPicker(){
 
 function renderFloat(){
   const host=$("#float"); host.innerHTML="";
+  const barras = (S.active && !(naSessao && view==="treinar") ? 1 : 0) + (restEnd ? 1 : 0);
+  document.body.classList.toggle("com-barra", barras===1);
+  document.body.classList.toggle("com-duas-barras", barras===2);
   const emTreino = S.active && !(naSessao && view==="treinar");
   if(emTreino){
     const n=doneSets(S.active.entries);
@@ -1677,7 +1730,15 @@ function renderFloat(){
       <header><h2 class="ellip">${esc(ex.name)}</h2><button class="btn sm" data-act="fecharMenu">Fechar</button></header>
       <div class="body">
         <label class="muted" style="font-size:12.5px">Anotação</label>
-        <input class="field" style="margin-top:6px" data-note="${ei}" value="${esc(en.note||"")}" placeholder="Pegada, altura do banco, número da máquina...">
+        <input class="field" style="margin-top:6px" data-note="${ei}" value="${esc(en.note||"")}" placeholder="Pegada, altura do banco...">
+
+        <label class="muted" style="font-size:12.5px;display:block;margin-top:16px">Máquina/aparelho</label>
+        <p class="muted" style="font-size:12px;margin-top:2px">Compara e guarda recorde separado por máquina. Deixe em branco para não separar.</p>
+        <input class="field" style="margin-top:6px" data-maquina="${ei}" value="${esc(en.maquina||"")}" placeholder="ex: Technogym, unidade 2" autocomplete="off">
+        ${(()=>{ const ms=maquinasDoExercicio(en.exId).filter(m=>m.toLowerCase()!==(en.maquina||"").trim().toLowerCase());
+          return ms.length ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+            ${ms.slice(0,6).map(m=>`<button class="chip" data-act="usarMaquina" data-i="${ei}" data-v="${esc(m)}">${esc(m)}</button>`).join("")}
+          </div>` : ""; })()}
 
         <div class="between" style="margin-top:16px">
           <span>Séries</span>
@@ -1750,7 +1811,7 @@ function renderFloat(){
   }
   if(resumoEx!==null && S.active && S.active.entries[resumoEx]){
     const ei=resumoEx, en=S.active.entries[ei], ex=exById(en.exId);
-    const {agora, antes, mesmoTreino, ondeFoi} = comparativoEx(en.exId, en.sets);
+    const {agora, antes, mesmoTreino, ondeFoi} = comparativoEx(en.exId, en.sets, en.maquina);
     const pendente = proximoPendente(ei);
     const tudoFeito = pendente===null;
     const linha = (rotulo, val, ant, unidade, casas) => {
@@ -1956,15 +2017,38 @@ function render(){
 }
 
 /* ---------- ações ---------- */
+/* Última máquina usada para o exercício dentro do mesmo treino. Serve de ponto
+   de partida: se a máquina estiver ocupada, você troca no menu. */
+function maquinasDoExercicio(exId){
+  const vistas=new Map();
+  for(let i=S.sessions.length-1;i>=0;i--){
+    S.sessions[i].entries.forEach(en=>{
+      if(en.exId!==exId || !en.maquina || !en.maquina.trim()) return;
+      const k=en.maquina.trim().toLowerCase();
+      if(!vistas.has(k)) vistas.set(k, en.maquina.trim());
+    });
+  }
+  return [...vistas.values()];
+}
+
+function ultimaMaquina(exId, rotId){
+  for(let i=S.sessions.length-1;i>=0;i--){
+    const se=S.sessions[i]; if(se.routineId!==rotId) continue;
+    const en=se.entries.find(x=>x.exId===exId);
+    if(en && en.maquina) return en.maquina;
+  }
+  return "";
+}
+
 function newSession(routine){
   const entries = (routine ? routine.items : []).map(it => {
-    const prev = lastSetsFor(it.exId);
+    const prev = lastSetsFor(it.exId, routine ? routine.id : undefined,
+                             routine && routine.id ? ultimaMaquina(it.exId, routine.id) : "");
     const sets=[];
     // sequência de tipos aprendida da última vez: A's primeiro, depois P's, depois T's
     const pad = it.padraoTipos;
     const seqTipos = pad ? Array(pad.A||0).fill("A").concat(Array(pad.P||0).fill("P")) : [];
-    const nValidasAlvo = pad ? (pad.T || Math.min(20, Math.max(1, parseInt(it.sets,10)||3)))
-                              : Math.min(20, Math.max(1, parseInt(it.sets,10)||3));
+    const nValidasAlvo = Math.min(20, Math.max(1, parseInt(it.sets,10)||3));   // o editor manda
     const nSeries = seqTipos.length + nValidasAlvo;
     let iValida = 0;
     for(let i=0;i<nSeries;i++){
@@ -1978,7 +2062,8 @@ function newSession(routine){
       }
       sets.push(st);
     }
-    return {exId:it.exId, rest:it.rest===0?0:(it.rest||90), reps:it.reps||"", note:"", sets};
+    const maq = routine && routine.id ? ultimaMaquina(it.exId, routine.id) : "";
+    return {exId:it.exId, rest:it.rest===0?0:(it.rest||90), reps:it.reps||"", note:"", maquina:maq, sets};
   });
   S.active = {routineId: routine?routine.id:null, name: routine?routine.name:"Treino livre", start:Date.now(), entries};
   view="treinar"; naSessao=true; focoIdx=0; wake(true); save(); render();
@@ -1994,9 +2079,11 @@ function aprenderTiposSeries(a){
   a.entries.forEach(en => {
     const it = r.items.find(x=>x.exId===en.exId);
     if(!it) return;
-    const conta = {A:0, P:0, T:0};
-    en.sets.forEach(st => { if(st.done) conta[tipoSerie(st)]++; });
-    if(conta.A || conta.P || conta.T) it.padraoTipos = conta;
+    // só aquecimento e preparatória são aprendidos; a quantidade de válidas
+    // pertence ao editor — senão um dia com série a menos vira o novo padrão
+    const conta = {A:0, P:0};
+    en.sets.forEach(st => { const tp=tipoSerie(st); if(st.done && tp!=="T") conta[tp]++; });
+    it.padraoTipos = conta;
   });
 }
 
@@ -2005,7 +2092,7 @@ function finish(){
   aprenderTiposSeries(a);
   const algumaSerieFeita = a.entries.some(en => en.sets.some(s=>s.done));
   if(!algumaSerieFeita){ toast("Marque ao menos uma série antes de concluir."); return; }
-  const entries=a.entries.map(en=>({exId:en.exId, note:en.note||"", sets:en.sets.filter(s=>s.done&&valida(s)).map(s=>({w:num(s.w),r:num(s.r),done:true}))}))
+  const entries=a.entries.map(en=>({exId:en.exId, note:en.note||"", maquina:en.maquina||"", sets:en.sets.filter(s=>s.done&&valida(s)).map(s=>({w:num(s.w),r:num(s.r),done:true}))}))
                          .filter(en=>en.sets.length);
   const prs=[];
   entries.forEach(en=>{
@@ -2169,15 +2256,21 @@ document.addEventListener("click", ev => {
       if(i0<0 || alvo<0 || alvo>=S.routines.length) break;
       const [mv]=S.routines.splice(i0,1); S.routines.splice(alvo,0,mv);
       save(); render(); break; }
+    case "usarMaquina": { const campo=document.querySelector(`[data-maquina="${i}"]`);
+      if(campo){ campo.value=t.dataset.v; campo.dispatchEvent(new Event("input",{bubbles:true})); }
+      renderFloat(); break; }
+    case "progMaq": progressMaq=t.dataset.v; progLimite=12; render(); break;
+    case "maisProg": progLimite+=24; render(); break;
     case "abrirRotina": {
       const abrindo = rotinaAberta!==id;
       rotinaAberta = abrindo ? id : null; render();
       if(abrindo){ const el=document.querySelector(`[data-act="abrirRotina"][data-id="${id}"]`);
         rolarAte(el); }
       break; }
-    case "abrirCal": voltarPara = view; view="calendario"; calMes=inicioMes(Date.now()); calDia=null; render(); window.scrollTo(0,0); break;
+    case "abrirCal": voltarPara = view; view="calendario"; calMes=inicioMes(Date.now()); calDia=null; render(); window.scrollTo(0,0); centrarMes(); break;
+    case "irMes": calMes=+t.dataset.ts; calDia=null; render(); centrarMes(); break;
     case "mes": { const b=new Date(calMes||inicioMes(Date.now()));
-      calMes=new Date(b.getFullYear(), b.getMonth()+(+t.dataset.d), 1).getTime(); calDia=null; render(); break; }
+      calMes=new Date(b.getFullYear(), b.getMonth()+(+t.dataset.d), 1).getTime(); calDia=null; render(); centrarMes(); break; }
     case "dia": calDia = calDia===+t.dataset.d ? null : +t.dataset.d; render(); break;
     case "abrirConfig": voltarPara = view; view="config"; render(); window.scrollTo(0,0); break;
     case "voltarConfig": view = voltarPara || "treinar"; calDia=null; render(); break;
@@ -2210,7 +2303,7 @@ document.addEventListener("click", ev => {
       }
       if(picker.mode==="swap"){ S.active.entries[picker.i].exId=id; }
       else if(picker.mode==="routine"){ const r=S.routines.find(x=>x.id===editingId); r.items.push({exId:id,sets:3,reps:"8-12",rest:90}); }
-      else { S.active.entries.push({exId:id, rest:90, reps:"", note:"", sets:novasSeries(id)}); focoIdx=S.active.entries.length-1; }
+      else { S.active.entries.push({exId:id, rest:90, reps:"", note:"", maquina:"", sets:novasSeries(id)}); focoIdx=S.active.entries.length-1; }
       picker=null; save(); render(); break;
     case "newEx": { const nome=(picker.q||"").trim(); if(!nome) break;
       picker.novo = nome.charAt(0).toUpperCase()+nome.slice(1); renderFloat(); break; }
@@ -2226,7 +2319,7 @@ document.addEventListener("click", ev => {
       S.custom.push(ex);
       if(picker.mode==="swap"){ S.active.entries[picker.i].exId=ex.id; }
       else if(picker.mode==="routine"){ const r=S.routines.find(x=>x.id===editingId); r.items.push({exId:ex.id,sets:3,reps:"8-12",rest:90}); }
-      else { S.active.entries.push({exId:ex.id, rest:90, reps:"", note:"", sets:novasSeries(ex.id)}); focoIdx=S.active.entries.length-1; }
+      else { S.active.entries.push({exId:ex.id, rest:90, reps:"", note:"", maquina:"", sets:novasSeries(ex.id)}); focoIdx=S.active.entries.length-1; }
       picker=null; save(); render(); toast("Exercício criado em "+t.dataset.m+"."); break; }
     case "start": { const r=S.routines.find(x=>x.id===id); if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break;} newSession(r); break; }
     case "repeat": { const s=S.sessions.find(x=>x.id===id);
@@ -2332,6 +2425,19 @@ document.addEventListener("input", ev => {
   if(el.dataset.note!==undefined && S.active){
     S.active.entries[+el.dataset.note].note = el.value; save(); return;
   }
+  if(el.dataset.maquina!==undefined && S.active){
+    const en=S.active.entries[+el.dataset.maquina];
+    en.maquina = el.value;
+    const prev = lastSetsFor(en.exId, undefined, en.maquina);
+    let iv=0;
+    en.sets.forEach(st => {
+      if(!valida(st)) return;
+      if(!st.done){ const p = prev ? prev[Math.min(iv, prev.length-1)] : null;
+        st.sug = p ? {w:fmt(num(p.w)), r:String(num(p.r))} : null; }
+      iv++;
+    });
+    save(); return;
+  }
   if(el.dataset.item!==undefined && editingId){
     const r=S.routines.find(x=>x.id===editingId); const it=r.items[+el.dataset.item]; const f=el.dataset.f;
     if(f==="reps"){ it.reps = el.value.slice(0,12); }
@@ -2343,7 +2449,7 @@ document.addEventListener("input", ev => {
 });
 
 document.addEventListener("change", ev => {
-  if(ev.target.dataset.act==="selEx"){ progressEx=ev.target.value; render(); return; }
+  if(ev.target.dataset.act==="selEx"){ progressEx=ev.target.value; progressMaq=""; progLimite=12; render(); return; }
   if(ev.target.id==="impf" && ev.target.files && ev.target.files[0]){
     const fr=new FileReader();
     fr.onload=()=>importFromText(String(fr.result));
@@ -2474,6 +2580,21 @@ document.addEventListener("pointermove", ev => {
 
 // enquanto arrasta, a página não rola junto
 document.addEventListener("touchmove", ev => { if(arraste) ev.preventDefault(); }, {passive:false});
+
+let calToque=null;
+document.addEventListener("touchstart", ev=>{
+  if(view!=="calendario" || !ev.target.closest || !ev.target.closest("#gradeCal")){ calToque=null; return; }
+  const p=ev.changedTouches[0]; calToque={x:p.clientX,y:p.clientY};
+},{passive:true});
+document.addEventListener("touchend", ev=>{
+  if(!calToque || view!=="calendario") return;
+  const p=ev.changedTouches[0], dx=p.clientX-calToque.x, dy=p.clientY-calToque.y; calToque=null;
+  if(Math.abs(dx)<60 || Math.abs(dy)>50) return;
+  const b=new Date(calMes||inicioMes(Date.now()));
+  const alvo=new Date(b.getFullYear(), b.getMonth()+(dx<0?1:-1), 1).getTime();
+  if(difMeses(alvo)>12) return;
+  calMes=alvo; calDia=null; render(); centrarMes();
+},{passive:true});
 
 window.addEventListener("scroll", () => {
   const t=$("#top"); if(t) t.classList.toggle("scrolled", window.scrollY>4);
