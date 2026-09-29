@@ -536,8 +536,41 @@ function gerarPlano(cfg){
   });
 }
 
+/* ---------- medidas corporais ---------- */
+const MEDIDAS = [
+  {k:"peso",        nome:"Peso",             un:"kg"},
+  {k:"gordura",     nome:"Gordura corporal", un:"%"},
+  {k:"peito",       nome:"Peito",            un:"cm"},
+  {k:"cintura",     nome:"Cintura",          un:"cm"},
+  {k:"abdomen",     nome:"Abdômen",          un:"cm"},
+  {k:"quadril",     nome:"Quadril",          un:"cm"},
+  {k:"braco",       nome:"Braço",            un:"cm", lado:true, fem:false},
+  {k:"coxa",        nome:"Coxa",             un:"cm", lado:true, fem:true},
+  {k:"panturrilha", nome:"Panturrilha",      un:"cm", lado:true, fem:true}
+];
+function medidasCfg(){
+  const c = (S.meta && S.meta.medidasCfg) || {};
+  return {ativas: Array.isArray(c.ativas) ? c.ativas : MEDIDAS.map(m=>m.k), lados: !!c.lados};
+}
+/* campos efetivos, já considerando se a pessoa mede os dois lados */
+function camposMedida(){
+  const cfg=medidasCfg(), out=[];
+  MEDIDAS.forEach(m=>{
+    if(!cfg.ativas.includes(m.k)) return;
+    if(m.lado && cfg.lados){
+      out.push({k:m.k+"_d", nome:m.nome+(m.fem?" direita":" direito"), un:m.un});
+      out.push({k:m.k+"_e", nome:m.nome+(m.fem?" esquerda":" esquerdo"), un:m.un});
+    } else out.push({k:m.k, nome:m.nome, un:m.un});
+  });
+  return out;
+}
+function serieMedida(k){
+  return S.medidas.filter(r=>r.valores && typeof r.valores[k]==="number")
+    .map(r=>({t:r.t, v:r.valores[k]})).sort((a,b)=>a.t-b.t);
+}
+
 /* ---------- estado ---------- */
-let S = {custom:[], routines:[], sessions:[], cardio:[], active:null, meta:{lastBackup:0,lastBackupCount:0}};
+let S = {custom:[], routines:[], sessions:[], cardio:[], medidas:[], active:null, meta:{lastBackup:0,lastBackupCount:0}};
 let view = "treinar";
 let editingId = null;
 let picker = null;          // {mode:"routine"|"workout"|"swap", q, muscle}
@@ -558,6 +591,7 @@ let progLimite = 12;             // sessões listadas no Progresso antes do "ver
 let resumoEx = null;                // exercício que acabou de ser concluído
 let formCardio = null;              // registro de cardio sendo criado ou editado
 let assistente = null;              // montagem de plano personalizado
+let formMed = null, cfgMed = false, medAberta = null;   // aba Medidas
 let enfaseModelo = "E";             // ênfase escolhida na hora de aplicar um modelo pronto (não é salva)
 let cardioLimite = 15;
 let cardioBusca = "", cardioTodas = false;
@@ -618,6 +652,7 @@ async function load(){
       if(!Array.isArray(S.routines)) S.routines=[];
       if(!Array.isArray(S.sessions)) S.sessions=[];
       if(!Array.isArray(S.cardio)) S.cardio=[];
+      if(!Array.isArray(S.medidas)) S.medidas=[];
       if(!S.meta) S.meta={lastBackup:0,lastBackupCount:0};
     }
   } catch(e){
@@ -634,6 +669,7 @@ async function load(){
    e também depois de restaurar um backup antigo. */
 function migrar(){
   if(!Array.isArray(S.cardio)) S.cardio=[];
+  if(!Array.isArray(S.medidas)) S.medidas=[];
   if(Array.isArray(S.sessions)) S.sessions.sort((a,b)=>(a.end||a.start||0)-(b.end||b.start||0));
   const arrumaSets = en => {
     if(!en || !Array.isArray(en.sets)) return;
@@ -894,7 +930,7 @@ function renderTop(){
       <button class="btn primary" data-act="finish">Concluir</button></div>`;
   } else {
     const titles={treinar:"Treino",historico:"Histórico",progresso:"Progresso",
-                  edit:"Editar treino",config:"Configurações",calendario:"Calendário",cardio:"Cardio"};
+                  edit:"Editar treino",config:"Configurações",calendario:"Calendário",cardio:"Cardio",medidas:"Medidas"};
     html = `<div class="toprow">`;
     if(view==="edit") html += `<button class="btn ghost sm" data-act="voltarEdit" aria-label="Voltar"
         style="font-size:20px;line-height:1;padding:2px 8px 2px 0">←</button>`;
@@ -1514,6 +1550,67 @@ function vCardio(){
   return h;
 }
 
+
+function variacao(d, un){
+  if(d===null || Math.abs(d)<0.05) return `<span class="muted">sem mudança</span>`;
+  // cores neutras: subir ou descer pode ser o objetivo, dependendo de quem mede
+  // gordura corporal varia em pontos percentuais, não em "%" relativo
+  return `<span class="tnum">${d>0?"▲":"▼"} ${fmt(Math.abs(d))} ${un==="%"?"p.p.":un}</span>`;
+}
+
+function vMedidas(){
+  const campos=camposMedida(), agora=Date.now();
+  let h = `<div class="stack"><button class="btn wide primary" data-act="novaMedida">+ Registrar medidas</button></div>`;
+  const rodape = `<p class="muted stack" style="font-size:12.5px">Para comparar de verdade, meça sempre nas mesmas condições: de manhã, em jejum, depois de ir ao banheiro e antes de treinar.</p>
+    <div class="stack" style="text-align:center"><button class="btn ghost" data-act="abrirCfgMed">Escolher o que medir</button></div>`;
+  if(!S.medidas.length){
+    return h + `<div class="empty">Nenhuma medida registrada ainda.<br>Peso, circunferências e gordura corporal ficam aqui, com a evolução de cada um.</div>` + rodape;
+  }
+  campos.forEach(c => {
+    const ser=serieMedida(c.k); if(!ser.length) return;
+    const atual=ser[ser.length-1], inicio=ser[0];
+    const antes30=[...ser].reverse().find(p=>p.t<=agora-30*864e5);
+    const semana=ser.filter(p=>p.t>=agora-7*864e5);
+    const media7 = (c.k==="peso" && semana.length>=2) ? semana.reduce((a,p)=>a+p.v,0)/semana.length : null;
+    const aberto = medAberta===c.k;
+    h += `<div class="card stack" style="padding:12px 14px">
+      <div class="between" data-act="abrirMedida" data-k="${c.k}" role="button" tabindex="0" aria-expanded="${aberto}" style="cursor:pointer">
+        <div class="grow">
+          <h3>${esc(c.nome)}</h3>
+          <p class="muted" style="font-size:12.5px">${dateLabel(atual.t)}${media7!==null?` · média 7 dias ${fmt(media7)} ${c.un}`:""}</p>
+        </div>
+        <div style="text-align:right">
+          <div class="tnum" style="font-size:22px;font-weight:650;letter-spacing:-.02em">${fmt(atual.v)}<span class="muted" style="font-size:13px;font-weight:500"> ${c.un}</span></div>
+        </div>
+      </div>
+      <div class="row" style="gap:14px;margin-top:6px;font-size:12.5px;flex-wrap:wrap">
+        <span class="muted">desde o início</span> ${ser.length>1?variacao(atual.v-inicio.v,c.un):`<span class="muted">1º registro</span>`}
+        <span class="muted">30 dias</span> ${antes30?variacao(atual.v-antes30.v,c.un):`<span class="muted">—</span>`}
+      </div>
+      ${aberto ? `<div style="margin-top:6px">${chart(ser, p=>p.v)}</div>` : ""}
+    </div>`;
+  });
+  const recentes=[...S.medidas].sort((a,b)=>b.t-a.t).slice(0,10);
+  h += `<h2 class="stack">Registros</h2>`;
+  recentes.forEach(r => {
+    const itens=campos.filter(c=>typeof r.valores[c.k]==="number").map(c=>`${c.nome} ${fmt(r.valores[c.k])}`);
+    h += `<div class="card stack" style="padding:11px 14px"><div class="between">
+      <div class="grow"><strong>${dateLabel(r.t)}</strong>
+        <p class="muted" style="font-size:12.5px">${esc(itens.slice(0,4).join(" · "))}${itens.length>4?` +${itens.length-4}`:""}</p></div>
+      <button class="btn sm" data-act="editMedida" data-id="${r.id}">Editar</button></div></div>`;
+  });
+  return h + rodape;
+}
+
+function lerFormMedida(){
+  if(!formMed) return;
+  const d=document.getElementById("mData");
+  if(d && d.value){ const [a,m,dd]=d.value.split("-").map(Number); const ant=new Date(formMed.t||Date.now());
+    formMed.t=new Date(a,m-1,dd,ant.getHours(),ant.getMinutes()).getTime(); }
+  document.querySelectorAll("[data-medv]").forEach(el=>{ formMed.valores[el.dataset.medv]=el.value; });
+}
+const LIMITES = {kg:[20,400], "%":[1,80], cm:[5,300]};
+
 function vConfig(){
   return temaCard() + resumoCard() + meusExerciciosCard() + dataCard() +
     `<div class="card stack"><h3>Sobre</h3>
@@ -1955,6 +2052,40 @@ function renderFloat(){
         <p class="muted" style="font-size:12px;margin-top:8px">Seus treinos atuais não são apagados — os novos entram no fim da lista.</p>
       </div></div></div>`);
   }
+  if(formMed){
+    const f=formMed, data=new Date(f.t||Date.now());
+    const iso=new Date(data.getTime()-data.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    host.insertAdjacentHTML("beforeend", `<div class="overlay" data-act="fecharMedida"><div class="sheet" data-stop="1">
+      <header><h2>${f.id?"Editar medidas":"Registrar medidas"}</h2><button class="btn sm" data-act="fecharMedida">Fechar</button></header>
+      <div class="body">
+        <label class="muted" style="font-size:12.5px">Data
+          <input class="field" style="margin-top:4px" type="date" id="mData" value="${iso}"></label>
+        <p class="muted" style="font-size:12px;margin-top:10px">Preencha só o que mediu hoje. O número em cinza é o último registro.</p>
+        ${camposMedida().map(c=>{ const ser=serieMedida(c.k), ult=ser.length?ser[ser.length-1].v:null;
+          const v=f.valores[c.k];
+          return `<label class="muted" style="font-size:12.5px;display:block;margin-top:10px">${esc(c.nome)} (${c.un})
+            <input class="field" style="margin-top:4px" inputmode="decimal" data-medv="${c.k}"
+              value="${v!==undefined&&v!==null&&v!==""?esc(String(v).replace(".",",")):""}" placeholder="${ult!==null?fmt(ult):"—"}"></label>`; }).join("")}
+        <button class="btn wide primary stack" data-act="salvarMedida">${f.id?"Salvar":"Registrar"}</button>
+        ${f.id?`<button class="btn wide danger" style="margin-top:8px" data-act="apagarMedida">Apagar registro</button>`:""}
+      </div></div></div>`);
+  }
+  if(cfgMed){
+    const c=medidasCfg();
+    host.insertAdjacentHTML("beforeend", `<div class="overlay" data-act="fecharCfgMed"><div class="sheet" data-stop="1">
+      <header><h2>O que medir</h2><button class="btn sm" data-act="fecharCfgMed">Fechar</button></header>
+      <div class="body">
+        <div class="row" style="flex-wrap:wrap;gap:6px">
+          ${MEDIDAS.map(m=>`<button class="chip ${c.ativas.includes(m.k)?"on":""}" data-act="medToggle" data-k="${m.k}">${m.nome}</button>`).join("")}
+        </div>
+        <p style="margin-top:18px">Braço, coxa e panturrilha</p>
+        <div class="row" style="gap:6px;margin-top:8px">
+          <button class="chip ${!c.lados?"on":""}" data-act="medLados" data-v="0">Um lado só</button>
+          <button class="chip ${c.lados?"on":""}" data-act="medLados" data-v="1">Direito e esquerdo</button>
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:8px">Medida de um lado e dos dois lados são guardadas separadas; trocar não apaga nada.</p>
+      </div></div></div>`);
+  }
   if(dialogo){
     host.insertAdjacentHTML("beforeend", `<div class="overlay centro" data-act="dlgNao">
       <div class="dialogo" data-stop="1" role="alertdialog" aria-modal="true" aria-label="${esc(dialogo.titulo)}">
@@ -1996,20 +2127,21 @@ window.addEventListener("online", renderOffline);
 window.addEventListener("offline", renderOffline);
 
 function renderNav(){
-  const items=[["treinar","Treino"],["cardio","Cardio"],["historico","Histórico"],["progresso","Progresso"]];
+  const items=[["treinar","Treino"],["cardio","Cardio"],["historico","Histórico"],["progresso","Progresso"],["medidas","Medidas"]];
   $("#nav").innerHTML = items.map(([k,l]) =>
     `<button class="${view===k||(view==="edit"&&k==="treinar")||((view==="config"||view==="calendario")&&k===voltarPara)?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}">${l}</button>`).join("");
 }
 
 function render(){
-  if(!["treinar","edit","historico","progresso","config","calendario","cardio"].includes(view)) view="treinar";
+  if(!["treinar","edit","historico","progresso","config","calendario","cardio","medidas"].includes(view)) view="treinar";
   const act=document.activeElement;
   const fk = act && act.dataset ? act.dataset.k : null;
   renderTop();
   const body = view==="treinar" ? vTreinar() : view==="edit" ? vEdit() : view==="historico" ? vHistorico() :
                view==="config" ? vConfig() :
                view==="calendario" ? vCalendario() :
-               view==="cardio" ? vCardio() : vProgresso();
+               view==="cardio" ? vCardio() :
+               view==="medidas" ? vMedidas() : vProgresso();
   $("#view").innerHTML = body;
   renderNav(); renderFloat(); renderOffline();
   if(fk){ const el=document.querySelector(`[data-k="${fk}"]`);
@@ -2178,6 +2310,42 @@ document.addEventListener("click", ev => {
       else window.scrollTo(0,0);
       break; }
     case "semResumo": S.meta=Object.assign({},S.meta||{},{semResumo:t.dataset.v==="1"}); save(); render(); break;
+    case "novaMedida": formMed={t:Date.now(), valores:{}}; renderFloat(); break;
+    case "editMedida": { const r=S.medidas.find(x=>x.id===id); if(!r) break;
+      formMed={id:r.id, t:r.t, valores:Object.assign({}, r.valores)}; renderFloat(); break; }
+    case "fecharMedida": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
+      formMed=null; renderFloat(); break;
+    case "salvarMedida": {
+      lerFormMedida();
+      const valores={}, errados=[];
+      camposMedida().forEach(c=>{
+        const bruto=formMed.valores[c.k]; if(bruto===undefined || String(bruto).trim()==="") return;
+        const v=num(bruto), [mn,mx]=LIMITES[c.un];
+        if(!(v>=mn && v<=mx)) errados.push(c.nome); else valores[c.k]=Math.round(v*10)/10;
+      });
+      // medidas desativadas continuam guardadas ao editar um registro antigo
+      if(formMed.id){ const ant=S.medidas.find(x=>x.id===formMed.id);
+        if(ant) Object.keys(ant.valores).forEach(k=>{ if(!camposMedida().some(c=>c.k===k)) valores[k]=ant.valores[k]; }); }
+      if(errados.length){ toast("Confira: "+errados.join(", ")+"."); break; }
+      if(!Object.keys(valores).length){ toast("Preencha pelo menos uma medida."); break; }
+      const reg={id:formMed.id||uid(), t:formMed.t, valores};
+      const i=S.medidas.findIndex(x=>x.id===reg.id);
+      if(i>=0) S.medidas[i]=reg; else S.medidas.push(reg);
+      formMed=null; save(); render(); toast(i>=0?"Medidas atualizadas.":"Medidas registradas."); break; }
+    case "apagarMedida": { const id0=formMed&&formMed.id; if(!id0) break; formMed=null; renderFloat();
+      pedirConfirmacao("Apagar este registro?","As medidas deste dia saem dos gráficos. Não dá para desfazer.","Apagar",
+        () => { S.medidas=S.medidas.filter(x=>x.id!==id0); save(); render(); toast("Registro apagado."); });
+      break; }
+    case "abrirMedida": medAberta = medAberta===t.dataset.k ? null : t.dataset.k; render(); break;
+    case "abrirCfgMed": cfgMed=true; renderFloat(); break;
+    case "fecharCfgMed": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
+      cfgMed=false; render(); break;
+    case "medToggle": { const c=medidasCfg(); const k=t.dataset.k;
+      c.ativas = c.ativas.includes(k) ? c.ativas.filter(x=>x!==k) : c.ativas.concat([k]);
+      if(!c.ativas.length){ toast("Deixe pelo menos uma medida ativa."); break; }
+      S.meta=Object.assign({},S.meta||{},{medidasCfg:c}); save(); renderFloat(); break; }
+    case "medLados": { const c=medidasCfg(); c.lados = t.dataset.v==="1";
+      S.meta=Object.assign({},S.meta||{},{medidasCfg:c}); save(); renderFloat(); break; }
     case "novoCardio": { const ultimo=S.cardio.slice().sort((a,b)=>b.t-a.t)[0];
       formCardio={tipo: ultimo?ultimo.tipo:"Esteira", min:"", km:"", intensidade:"", nota:"", t:Date.now()};
       cardioBusca=""; cardioTodas=false; renderFloat(); break; }
@@ -2462,7 +2630,7 @@ document.addEventListener("keydown", ev => {
   if((ev.key==="Enter"||ev.key===" ") && ev.target.getAttribute && ev.target.getAttribute("role")==="button"){
     ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); return;
   }
-  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit||resumoEx!==null||formCardio||assistente)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; resumoEx=null; formCardio=null; assistente=null; renderFloat(); }
+  if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit||resumoEx!==null||formCardio||assistente||formMed||cfgMed)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; resumoEx=null; formCardio=null; assistente=null; formMed=null; cfgMed=false; renderFloat(); }
   if(S.active && naSessao && modo()==="foco" && !picker && !exMenu && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
     if(ev.key==="ArrowLeft" && focoIdx>0){ focoIdx--; render(); }
     if(ev.key==="ArrowRight" && focoIdx<S.active.entries.length-1){ focoIdx++; render(); }
@@ -2647,7 +2815,7 @@ document.addEventListener("visibilitychange", () => { if(document.visibilityStat
 
 load().then(() => {
   const aba = S.meta && S.meta.aba;
-  if(["treinar","cardio","historico","progresso"].includes(aba)) view = aba;
+  if(["treinar","cardio","historico","progresso","medidas"].includes(aba)) view = aba;
   aplicarTema(); render(); if(S.active) wake(true);
 });
 })();
