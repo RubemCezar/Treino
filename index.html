@@ -806,6 +806,35 @@ function ultimaExecucao(exId, rotId, maquina){
   }
   return fora;
 }
+function ultimosDoTipo(exId, tipo, rotId, maquina){
+  const id = rotId===undefined ? (S.active ? S.active.routineId : null) : rotId;
+  const alvo = maquina ? maquina.trim().toLowerCase() : null;
+  let fora=null;
+  for(let i=S.sessions.length-1;i>=0;i--){
+    const se=S.sessions[i], en=se.entries.find(x=>x.exId===exId); if(!en) continue;
+    if(alvo && (en.maquina||"").trim().toLowerCase()!==alvo) continue;
+    const sets=en.sets.filter(x=>x.done && tipoSerie(x)===tipo); if(!sets.length) continue;
+    if(se.routineId===id) return sets;
+    if(!fora) fora=sets;
+  }
+  return fora;
+}
+
+/* Sugestões de todas as séries ainda não feitas, cada tipo puxando da sua
+   própria referência: válidas das válidas, aquecimento do aquecimento. */
+function recalcularSugestoes(en, rotId){
+  const ref = {T: lastSetsFor(en.exId, rotId, en.maquina),
+               A: ultimosDoTipo(en.exId, "A", rotId, en.maquina),
+               P: ultimosDoTipo(en.exId, "P", rotId, en.maquina)};
+  const idx = {T:0, A:0, P:0};
+  en.sets.forEach(st => {
+    const tp=tipoSerie(st), i=idx[tp]++;
+    if(st.done) return;
+    const lista=ref[tp], p = lista && lista.length ? lista[Math.min(i, lista.length-1)] : null;
+    st.sug = p ? {w:fmt(num(p.w)), r:String(num(p.r))} : null;
+  });
+}
+
 function lastSetsFor(exId, rotId, maquina){
   const u = ultimaExecucao(exId, rotId, maquina);
   return u ? u.sets : null;
@@ -1088,11 +1117,15 @@ function cardExercicio(en, ei, foco, cabecalho){
     : `<div style="height:8px"></div>`;
 
   let nValida = 0;   // as válidas são numeradas 1,2,3... ignorando A e P
+  const refA = ultimosDoTipo(en.exId,"A",undefined,en.maquina), refP = ultimosDoTipo(en.exId,"P",undefined,en.maquina);
+  const contRef = {T:0, A:0, P:0};
   en.sets.forEach((st,si) => {
     const ehValida = valida(st);
     if(ehValida) nValida++;
     const rotulo = ehValida ? String(nValida) : TIPOS_SERIE[tipoSerie(st)].rot;
-    const p = (ehValida && prev) ? prev[Math.min(nValida-1, prev.length-1)] : null;
+    const tpRef = tipoSerie(st), iRef = ++contRef[tpRef];
+    const refLista = ehValida ? prev : (tpRef==="A" ? refA : refP);
+    const p = refLista && refLista.length ? refLista[Math.min(iRef-1, refLista.length-1)] : null;
     h += `<div class="setrow ${comHist?"comhist":""} ${st.done?"ok":""}">
       <button class="setno" data-act="tipoSerie" data-i="${ei}" data-j="${si}"
         title="Série ${TIPOS_SERIE[tipoSerie(st)].nome} — toque para mudar"
@@ -1365,12 +1398,16 @@ function dataCard(){
 
 function listaExercicios(se, aberto){
   return se.entries.map(en => {
-    const sets=en.sets.filter(x=>x.done);
-    if(!sets.length) return "";
+    const sets=en.sets.filter(x=>x.done && valida(x));
+    const extras=en.sets.filter(x=>x.done && !valida(x));
+    if(!sets.length && !extras.length) return "";
+    const rotulo = sets.length ? `${sets.length} série${sets.length===1?"":"s"}` : "só aquecimento";
     return `<div style="padding:5px 0">
       <div class="between"><span class="ellip grow">${esc(exById(en.exId).name)}${en.maquina?` <span class="muted" style="font-size:12px">· ${esc(en.maquina)}</span>`:""}</span>
-        <span class="muted" style="font-size:13px;white-space:nowrap">${sets.length} série${sets.length===1?"":"s"}</span></div>
-      ${aberto ? `<p class="muted tnum" style="font-size:13px;margin-top:3px">${sets.map(x=>par(x.w,x.r)).join("   ")}</p>` : ""}
+        <span class="muted" style="font-size:13px;white-space:nowrap">${rotulo}</span></div>
+      ${aberto ? `<p class="muted tnum" style="font-size:13px;margin-top:3px">${
+          extras.map(x=>`<span style="color:${TIPOS_SERIE[tipoSerie(x)].cor}">${TIPOS_SERIE[tipoSerie(x)].rot}</span> ${par(x.w,x.r)}`).concat(
+          sets.map(x=>par(x.w,x.r))).join("   ")}</p>` : ""}
     </div>`;
   }).join("");
 }
@@ -2195,7 +2232,9 @@ function newSession(routine){
       sets.push(st);
     }
     const maq = routine && routine.id ? ultimaMaquina(it.exId, routine.id) : "";
-    return {exId:it.exId, rest:it.rest===0?0:(it.rest||90), reps:it.reps||"", note:"", maquina:maq, sets};
+    const entry = {exId:it.exId, rest:it.rest===0?0:(it.rest||90), reps:it.reps||"", note:"", maquina:maq, sets};
+    recalcularSugestoes(entry, routine ? routine.id : null);
+    return entry;
   });
   S.active = {routineId: routine?routine.id:null, name: routine?routine.name:"Treino livre", start:Date.now(), entries};
   view="treinar"; naSessao=true; focoIdx=0; wake(true); save(); render();
@@ -2224,13 +2263,19 @@ function finish(){
   aprenderTiposSeries(a);
   const algumaSerieFeita = a.entries.some(en => en.sets.some(s=>s.done));
   if(!algumaSerieFeita){ toast("Marque ao menos uma série antes de concluir."); return; }
-  const entries=a.entries.map(en=>({exId:en.exId, note:en.note||"", maquina:en.maquina||"", sets:en.sets.filter(s=>s.done&&valida(s)).map(s=>({w:num(s.w),r:num(s.r),done:true}))}))
-                         .filter(en=>en.sets.length);
+  // aquecimento e preparatória são guardados (com o tipo marcado) só para sugerir
+  // carga na próxima vez; todo cálculo do app filtra por valida() e os ignora
+  const entries=a.entries.map(en=>({exId:en.exId, note:en.note||"", maquina:en.maquina||"",
+      sets:en.sets.filter(s=>s.done).map(s=>{ const r={w:num(s.w),r:num(s.r),done:true};
+        if(!valida(s)) r.tipo=tipoSerie(s); return r; })}))
+    .filter(en=>en.sets.length);
   const prs=[];
   entries.forEach(en=>{
-    const before=bestFor(en.exId,null);
+    const validas=en.sets.filter(valida);
+    if(!validas.length) return;
+    const before=bestFor(en.exId,null,en.maquina);
     let bw=0,be=0;
-    en.sets.forEach(s=>{ if(s.w>bw)bw=s.w; const e=e1rm(s.w,s.r); if(e>be)be=e; });
+    validas.forEach(s=>{ if(s.w>bw)bw=s.w; const e=e1rm(s.w,s.r); if(e>be)be=e; });
     if(bw>before.w+0.001) prs.push(exById(en.exId).name+" "+fmt(bw)+" kg");
     else if(be>before.e+0.001) prs.push(exById(en.exId).name+" (índice)");
   });
@@ -2492,7 +2537,9 @@ document.addEventListener("click", ev => {
     case "start": { const r=S.routines.find(x=>x.id===id); if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break;} newSession(r); break; }
     case "repeat": { const s=S.sessions.find(x=>x.id===id);
       if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break; }
-      newSession({id:s.routineId,name:s.name,items:s.entries.map(en=>({exId:en.exId,sets:en.sets.length,reps:"",rest:90}))}); break; }
+      newSession({id:s.routineId,name:s.name,items:s.entries.map(en=>({exId:en.exId,
+        sets:Math.max(1,en.sets.filter(valida).length),reps:"",rest:90,
+        padraoTipos:{A:en.sets.filter(x=>tipoSerie(x)==="A").length, P:en.sets.filter(x=>tipoSerie(x)==="P").length}}))}); break; }
     case "pularEx": { const en=S.active.entries[i]; en.skipped=!en.skipped;
       let alvo=focoIdx;
       if(en.skipped && modo()==="foco" && i===focoIdx){ const p=proximoPendente(i); if(p!==null) alvo=p; }
@@ -2534,7 +2581,7 @@ document.addEventListener("click", ev => {
     case "setRest": S.active.entries[i].rest=+t.dataset.d; save(); render(); break;
     case "swapEx": exMenu=null; picker={mode:"swap", i:i, q:"", muscle:null}; renderFloat(); break;
     case "tipoSerie": { const st=S.active.entries[i].sets[j];
-      st.tipo=proxTipo(st); delete st.warm; save(); render(); break; }
+      st.tipo=proxTipo(st); delete st.warm; recalcularSugestoes(S.active.entries[i]); save(); render(); break; }
     case "finish": finish(); break;
     case "cancelWorkout": {
       const feitas=doneSets(S.active.entries);
@@ -2596,14 +2643,7 @@ document.addEventListener("input", ev => {
   if(el.dataset.maquina!==undefined && S.active){
     const en=S.active.entries[+el.dataset.maquina];
     en.maquina = el.value;
-    const prev = lastSetsFor(en.exId, undefined, en.maquina);
-    let iv=0;
-    en.sets.forEach(st => {
-      if(!valida(st)) return;
-      if(!st.done){ const p = prev ? prev[Math.min(iv, prev.length-1)] : null;
-        st.sug = p ? {w:fmt(num(p.w)), r:String(num(p.r))} : null; }
-      iv++;
-    });
+    recalcularSugestoes(en);
     save(); return;
   }
   if(el.dataset.item!==undefined && editingId){
