@@ -2258,6 +2258,23 @@ function aprenderTiposSeries(a){
   });
 }
 
+/* Tirar uma série VÁLIDA com o "−" é um pedido explícito: o treino salvo passa a
+   planejar essa quantidade nos próximos treinos. Só baixa (o "+" vale só para o dia),
+   nunca vai abaixo de 1, e treino livre ou exercício avulso não mudam nada.
+   Não confundir com aprenderTiposSeries: aquilo é inferido do que foi feito e,
+   por isso, nunca mexe na quantidade de válidas. */
+function baixarPlanoSeries(en){
+  const a = S.active; if(!a || !a.routineId) return;
+  const r = S.routines.find(x=>x.id===a.routineId); if(!r) return;
+  const it = r.items.find(x=>x.exId===en.exId); if(!it) return;
+  const restam = Math.max(1, en.sets.filter(valida).length);
+  const plano = Math.min(20, Math.max(1, parseInt(it.sets,10)||3));
+  if(restam < plano){
+    it.sets = restam;
+    toast("Próximos treinos: "+restam+(restam===1?" série válida":" séries válidas"));
+  }
+}
+
 function finish(){
   const a=S.active; if(!a) return;
   aprenderTiposSeries(a);
@@ -2561,7 +2578,9 @@ document.addEventListener("click", ev => {
       const l=en.sets[en.sets.length-1];
       const base = l ? (l.w!=="" || l.r!=="" ? {w:String(l.w),r:String(l.r)} : l.sug) : null;
       en.sets.push({w:"",r:"",done:false,sug: base && (base.w||base.r) ? base : null}); save(); render(); break; }
-    case "delSet": { const en=S.active.entries[i]; if(en.sets.length>1) en.sets.pop(); save(); render(); break; }
+    case "delSet": { const en=S.active.entries[i];
+      if(en.sets.length>1){ const tirada=en.sets.pop(); if(valida(tirada)) baixarPlanoSeries(en); }
+      save(); render(); break; }
     case "rmEx": S.active.entries.splice(i,1); exMenu=null; dobrado.clear(); ultimoMexido=null; focoIdx=Math.min(focoIdx, Math.max(0,S.active.entries.length-1)); save(); render(); break;
     case "foco": { const d=+t.dataset.d;
       focoIdx=Math.min(S.active.entries.length-1, Math.max(0, focoIdx+d)); render(); window.scrollTo(0,0); break; }
