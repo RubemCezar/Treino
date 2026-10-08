@@ -35,6 +35,7 @@ A função `migrar()` roda em toda abertura e em toda restauração de backup; q
 - **Tipos de série:** `T` válida, `A` aquecimento, `P` preparatória. Só `T` conta em volume, recordes, índice, séries por grupo, histórico e sugestão. A/P são numeradas por letra; as válidas por 1, 2, 3 ignorando A/P.
 - **Sugestão por tipo:** cada linha sugere a partir da última série do **mesmo tipo** (aquecimento do aquecimento, válida da válida), via `recalcularSugestoes()`. Trocar tipo ou máquina recalcula.
 - **Memória de tipos** (`padraoTipos`): o treino lembra só quantos **A e P** fazer. A quantidade de **válidas vem do editor** — nunca aprender isso do que foi feito, senão o planejado encolhe.
+- **Botão − (menos uma série) é pedido explícito:** tirar uma série **válida** com o − no treino em andamento baixa também `items[].sets` do treino salvo (`baixarPlanoSeries`), com aviso "Próximos treinos: N séries válidas". Só baixa: o **+** vale só para o dia e nunca sobe o plano; tirar linha A/P não mexe; mínimo 1; treino livre e exercício que não está no treino não mudam nada. Não confundir com a regra acima: série **não marcada** continua sem encolher o plano — só o toque no − faz isso.
 - **Comparação e sugestão:** mesmo treino primeiro; com **máquina** preenchida, só a mesma máquina. Sem máquina, comportamento antigo.
 - **Máquina:** texto livre, lembrada por treino, comparação sem diferenciar maiúscula.
 - **Resumo do exercício** só oferece "Concluir treino" quando nada está pendente (exercício pulado não conta como pendente).
@@ -46,9 +47,9 @@ A função `migrar()` roda em toda abertura e em toda restauração de backup; q
 
 Pasta `testes/`. Para rodar: `npm install jsdom` e depois `sh testes/rodar.sh`.
 
-- 15 arquivos `test_*.js` (205 verificações) + `fuzz.js` (cliques aleatórios checando erro e integridade dos dados) + `escala.js` (desempenho com ~1,5 ano de histórico) + `telas.py` (screenshots reais via Playwright/Chromium, se disponível).
+- 16 arquivos `test_*.js` (223 verificações) + `fuzz.js` (cliques aleatórios checando erro e integridade dos dados) + `escala.js` (desempenho com ~1,5 ano de histórico) + `telas.py` (screenshots reais via Playwright/Chromium, se disponível).
 - Todo teste falha se o app escrever erro no console.
-- Armadilhas conhecidas do harness: o app **recria o DOM** a cada `render()`, então nunca guarde referência de elemento entre ações; o `✓` **alterna**, então não marque de novo séries já feitas; `build()` zera o armazenamento, use `build(true)` para simular reabrir o app.
+- Armadilhas conhecidas do harness: o app **recria o DOM** a cada `render()`, então nunca guarde referência de elemento entre ações; o `✓` **alterna**, então não marque de novo séries já feitas; `build()` zera o armazenamento, use `build(true)` para simular reabrir o app; o app grava com **350 ms de atraso**, então para ler `mem` force a gravação (`w.dispatchEvent(new w.Event("pagehide"))`) e, com vários cenários no mesmo arquivo, feche a janela (`w.close()`) ao fim de cada um — senão ela grava por cima do cenário seguinte.
 
 ## Lições de código
 
