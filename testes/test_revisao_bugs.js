@@ -132,6 +132,24 @@ const {build,esperar,clique,digitar,txt,lista,mem,t,fim} = require("./harness.js
   t(S.active.entries[0].rest===0, "e o treino abre com descanso desligado");
   await fechar(w);
 
+  // 10) "Repetir treino" usa o descanso e as reps do treino salvo
+  w = await abrir(base({routines:rot([{exId:EX,sets:3,reps:"6-8",rest:150}]),
+    sessions:[ses("s1",1,[{w:80,r:6,done:true},{w:80,r:6,done:true}])]}));
+  clique(w,'[data-act="nav"][data-v="historico"]'); await esperar(25);
+  clique(w,'[data-act="repeat"]'); await esperar(40);
+  S = await estado(w);
+  t(S.active && S.active.entries[0].rest===150, "repetir usa o descanso do treino salvo (viu "+(S.active&&S.active.entries[0].rest)+")");
+  t(S.active && S.active.entries[0].reps==="6-8", "e a faixa de repetições");
+  await fechar(w);
+
+  // 11) contadores no singular quando é 1
+  w = await abrir(base({routines:[{id:"rA",name:"Push",items:[{exId:EX,sets:3,reps:"",rest:90}]},
+                                  {id:"rB",name:"Pull",items:[{exId:"barra_fixa",sets:3,reps:"",rest:90}]}],
+    sessions:[ses("s1",1,[{w:80,r:6,done:true}])]}));
+  t(/1 exercício · /.test(txt(w)) && !/1 exercícios/.test(txt(w)), "\"1 exercício\", não \"1 exercícios\"");
+  t(/1 série/.test(txt(w)) && !/1 séries/.test(txt(w)), "\"1 série\", não \"1 séries\"");
+  await fechar(w);
+
   t(erros.length===0, "nenhum erro no console ("+(erros[0]||"")+")");
   fim();
 })();

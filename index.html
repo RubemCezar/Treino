@@ -87,8 +87,8 @@
   .chk.on{background:var(--green);border-color:var(--green);color:var(--surface)}
   .ex.done .num, .setrow.ok .num{background:var(--ok-bg);border-color:var(--ok-line)}
   .ex.pulado{border-style:dashed;opacity:.72}
-  .dot.pulado{background:var(--muted);opacity:.55}
-  .dot.pulado.now{outline:2px solid var(--blue);outline-offset:-1px}
+  .dot.pulado{background-color:var(--muted);opacity:.55}
+  .dot.pulado.now{box-shadow:inset 0 0 0 1px var(--blue);opacity:.9}
   /* nav */
   nav{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--nav-bg);border-top:1px solid var(--line);
       display:flex;padding-bottom:env(safe-area-inset-bottom);max-width:672px;margin:0 auto}
@@ -130,11 +130,15 @@
   .stat b{display:block;font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
   .stat span{font-size:12px;color:var(--muted)}
   .dots{display:flex;gap:4px;margin:2px 0}
-  .dot{flex:1;height:5px;border-radius:3px;background:var(--track);cursor:pointer;padding:0;
-       border-top:9px solid transparent;border-bottom:9px solid transparent;background-clip:padding-box}
-  .dot.done{background:var(--green)}
-  .dot.now:not(.done){background:var(--blue)}
-  .dot.now{box-shadow:0 0 0 2px var(--blue)}
+  /* barra fina de 5px com área de toque de 23px: a cor fica só no miolo (padding-box);
+     por isso os estados mudam background-COLOR — o atalho "background" reiniciaria o clip
+     e pintaria a faixa de toque inteira */
+  .dot{flex:1;height:5px;border-radius:3px;background-color:var(--track);cursor:pointer;padding:0;
+       border:0;border-top:9px solid transparent;border-bottom:9px solid transparent;
+       background-clip:padding-box;box-sizing:content-box;-webkit-appearance:none;appearance:none}
+  .dot.done{background-color:var(--green)}
+  .dot.now:not(.done){background-color:var(--blue)}
+  .dot.now.done{box-shadow:inset 0 0 0 1px var(--blue)}
   .setrow.comhist{grid-template-columns:24px 1fr 1fr 62px 42px}
   .hist{font-size:11.5px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
   .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
@@ -730,6 +734,8 @@ function migrar(){
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const num = v => { const n = parseFloat(String(v).replace(",",".")); return isFinite(n) ? n : 0; };
 const fmt = n => (Math.round(n*10)/10).toString().replace(".",",");
+// "1 exercício", "2 exercícios": contador com singular certo
+const pl = (n, sing, plur) => n+" "+(n===1?sing:plur);
 // padrão do app: repetições × carga  (ex.: 12×42,5)
 /* Tipo da série: T = válida (conta), A = aquecimento, P = preparatória/feeder.
    Só as válidas entram em volume, contagem de séries, recordes e sugestões. */
@@ -974,10 +980,13 @@ function restaurarFoco(f){
 
 /* ---------- descanso ---------- */
 function startRest(sec){ restTotal=sec; restEnd=Date.now()+sec*1000; renderFloat(); }
+let audioCtx = null;   // um só contexto de áudio, reaproveitado a cada bipe
 function beep(){
   try{
     const C = window.AudioContext||window.webkitAudioContext; if(!C) return;
-    const ctx=new C(), o=ctx.createOscillator(), g=ctx.createGain();
+    if(!audioCtx || audioCtx.state==="closed") audioCtx = new C();
+    if(audioCtx.state==="suspended" && audioCtx.resume) audioCtx.resume();
+    const ctx=audioCtx, o=ctx.createOscillator(), g=ctx.createGain();
     o.connect(g); g.connect(ctx.destination); o.frequency.value=880; o.type="sine";
     g.gain.setValueAtTime(.001,ctx.currentTime); g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.02);
     g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.5);
@@ -1071,7 +1080,7 @@ function vTreinar(){
           <div class="grow" data-act="abrirRotina" data-id="${r.id}" role="button" tabindex="0"
             aria-expanded="${aberta?"true":"false"}" style="cursor:pointer">
             <h3 class="ellip">${esc(r.name)}${ehProximo?` <span class="tag prox">Próximo</span>`:""}</h3>
-            <p class="muted" style="font-size:13px">${r.items.length} exercícios${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"}&nbsp;${aberta?"▲":"▼"}</p>
+            <p class="muted" style="font-size:13px">${pl(r.items.length,"exercício","exercícios")}${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"}&nbsp;${aberta?"▲":"▼"}</p>
           </div>
           <button class="btn primary" data-act="start" data-id="${r.id}">Treinar</button>
         </div>
@@ -1129,7 +1138,7 @@ function vTreinar(){
         <div class="grow" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
           aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
           <h3 class="ellip">${esc(se.name)}</h3>
-          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${doneSets(se.entries)} séries&nbsp;${aberto?"▲":"▼"}</p></div>
+          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${pl(doneSets(se.entries),"série","séries")}&nbsp;${aberto?"▲":"▼"}</p></div>
         <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir</button></div>
         ${aberto ? `<div class="sep"></div>` + listaExercicios(se, false) : ""}</div>`;
     });
@@ -1300,7 +1309,7 @@ function vSession(){
   if(modo()==="foco") return vSessionFoco();
   const a=S.active;
   let h = `<div class="between stack" style="margin-bottom:4px">
-      <span class="muted" style="font-size:13px">${a.entries.length} exercícios</span>
+      <span class="muted" style="font-size:13px">${pl(a.entries.length,"exercício","exercícios")}</span>
       <button class="btn sm" data-act="modoFoco">Modo foco</button></div>`;
 
   let primeiroAberto = true;
@@ -1435,7 +1444,7 @@ function dataCard(){
              : "Atenção: este navegador bloqueia o salvamento. Baixe um backup antes de fechar.";
   return `<div class="card stack">
     <h3>Seus dados</h3>
-    <p class="muted" style="font-size:13px;margin-top:4px">${onde} ${S.sessions.length} treinos feitos, ${S.routines.length} treinos salvos.</p>
+    <p class="muted" style="font-size:13px;margin-top:4px">${onde} ${pl(S.sessions.length,"treino feito","treinos feitos")}, ${pl(S.routines.length,"treino salvo","treinos salvos")}.</p>
     ${swEstado ? `<p class="muted" style="font-size:13px">Modo offline: ${swEstado==="ativo"
         ? "<span style=\"color:var(--green)\">ativo</span> — funciona sem internet."
         : swEstado==="instalando" ? "instalando, recarregue a página uma vez."
@@ -1483,7 +1492,7 @@ function cardSessao(se, aberto){
     <div class="between" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
       aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
       <div class="grow"><h3 class="ellip">${esc(se.name)}</h3>
-        <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${dur((se.end||se.start)-se.start)} · ${doneSets(se.entries)} séries</p></div>
+        <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${dur((se.end||se.start)-se.start)} · ${pl(doneSets(se.entries),"série","séries")}</p></div>
       <span class="muted">${aberto?"▲":"▼"}</span>
     </div>
     <div class="sep"></div>
@@ -1637,7 +1646,7 @@ function vCardio(){
       </div></div>`;
   });
   if(S.cardio.length>lista.length){
-    h += `<div class="stack"><button class="btn wide" data-act="maisCardio">Ver mais (${S.cardio.length-lista.length} restantes)</button></div>`;
+    h += `<div class="stack"><button class="btn wide" data-act="maisCardio">Ver mais (${pl(S.cardio.length-lista.length,"restante","restantes")})</button></div>`;
   }
   return h;
 }
@@ -1707,7 +1716,7 @@ function vConfig(){
   return temaCard() + resumoCard() + meusExerciciosCard() + dataCard() +
     `<div class="card stack"><h3>Sobre</h3>
       <p class="muted" style="font-size:13px;margin-top:4px">Seus treinos ficam apenas neste aparelho. Não há conta, servidor nem sincronização — por isso o backup é o que garante os dados a longo prazo.</p>
-      <p class="muted" style="font-size:13px;margin-top:8px">${S.sessions.length} treinos feitos, ${S.routines.length} treinos salvos, ${S.custom.length} exercícios criados por você.</p>
+      <p class="muted" style="font-size:13px;margin-top:8px">${pl(S.sessions.length,"treino feito","treinos feitos")}, ${pl(S.routines.length,"treino salvo","treinos salvos")}, ${pl(S.custom.length,"exercício criado","exercícios criados")} por você.</p>
     </div>`;
 }
 
@@ -1718,7 +1727,7 @@ function vHistorico(){
   let h="";
   lista.forEach(se => { h += cardSessao(se, openId===se.id); });
   if(total>lista.length){
-    h += `<div class="stack"><button class="btn wide" data-act="maisHist">Ver mais treinos (${total-lista.length} restantes)</button></div>`;
+    h += `<div class="stack"><button class="btn wide" data-act="maisHist">Ver mais treinos (${pl(total-lista.length,"restante","restantes")})</button></div>`;
   } else if(total>15){
     h += `<p class="muted stack" style="font-size:12.5px;text-align:center">${total} treinos registrados.</p>`;
   }
@@ -1781,7 +1790,7 @@ function vProgresso(){
       <span class="tnum muted" style="font-size:14px">melhor série ${parKg(p.bset.w,p.bset.r)}${p.vol>0?" · "+ton(p.vol):""}</span></div></div>`;
   });
   if(recentes.length > progLimite){
-    h += `<div class="stack"><button class="btn wide" data-act="maisProg">Ver mais sessões (${recentes.length-progLimite} restantes)</button></div>`;
+    h += `<div class="stack"><button class="btn wide" data-act="maisProg">Ver mais sessões (${pl(recentes.length-progLimite,"restante","restantes")})</button></div>`;
   }
   h += `<div class="stack"><p class="muted" style="font-size:12.5px">${comCarga?"Volume total acumulado neste exercício: "+ton(vol)+".":"Total de repetições acumuladas: "+repsTot+"."}</p></div>`;
   return h;
@@ -2624,11 +2633,16 @@ document.addEventListener("click", ev => {
       else { S.active.entries.push({exId:ex.id, rest:90, reps:"", note:"", maquina:"", sets:novasSeries(ex.id)}); focoIdx=S.active.entries.length-1; }
       picker=null; save(); render(); toast("Exercício criado em "+t.dataset.m+"."); break; }
     case "start": { const r=S.routines.find(x=>x.id===id); if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break;} newSession(r); break; }
-    case "repeat": { const s=S.sessions.find(x=>x.id===id);
+    case "repeat": { const s=S.sessions.find(x=>x.id===id); if(!s) break;
       if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break; }
-      newSession({id:s.routineId,name:s.name,items:s.entries.map(en=>({exId:en.exId,
-        sets:Math.max(1,en.sets.filter(valida).length),reps:"",rest:90,
-        padraoTipos:{A:en.sets.filter(x=>tipoSerie(x)==="A").length, P:en.sets.filter(x=>tipoSerie(x)==="P").length}}))}); break; }
+      // descanso e faixa de reps vêm do treino salvo, quando o exercício está nele
+      const salvo = S.routines.find(x=>x.id===s.routineId);
+      newSession({id:s.routineId,name:s.name,items:s.entries.map(en=>{
+        const it = salvo ? salvo.items.find(x=>x.exId===en.exId) : null;
+        return {exId:en.exId,
+        sets:Math.max(1,en.sets.filter(valida).length),
+        reps: it ? it.reps : "", rest: it ? it.rest : 90,
+        padraoTipos:{A:en.sets.filter(x=>tipoSerie(x)==="A").length, P:en.sets.filter(x=>tipoSerie(x)==="P").length}}; })}); break; }
     case "pularEx": { const en=S.active.entries[i]; en.skipped=!en.skipped;
       let alvo=focoIdx;
       if(en.skipped && modo()==="foco" && i===focoIdx){ const p=proximoPendente(i); if(p!==null) alvo=p; }
@@ -2677,7 +2691,7 @@ document.addEventListener("click", ev => {
     case "cancelWorkout": {
       const feitas=doneSets(S.active.entries);
       pedirConfirmacao("Descartar o treino?",
-        feitas ? `As ${feitas} séries marcadas serão perdidas e nada vai para o histórico.`
+        feitas ? (feitas===1 ? "A série marcada será perdida e nada vai para o histórico." : `As ${feitas} séries marcadas serão perdidas e nada vai para o histórico.`)
                : "O treino em andamento será encerrado sem registrar nada.",
         "Descartar",
         () => { S.active=null; restEnd=0; naSessao=false; focoIdx=0; picker=null; exMenu=null; progSheet=null;
@@ -2762,7 +2776,7 @@ document.addEventListener("keydown", ev => {
     ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); return;
   }
   if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit||resumoEx!==null||formCardio||assistente||formMed||cfgMed)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; resumoEx=null; formCardio=null; assistente=null; formMed=null; cfgMed=false; renderFloat(); }
-  if(S.active && naSessao && modo()==="foco" && !picker && !exMenu && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
+  if(S.active && naSessao && modo()==="foco" && !picker && exMenu===null && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
     if(ev.key==="ArrowLeft" && focoIdx>0){ focoIdx--; render(); }
     if(ev.key==="ArrowRight" && focoIdx<S.active.entries.length-1){ focoIdx++; render(); }
   }
