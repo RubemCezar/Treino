@@ -34,10 +34,12 @@ A função `migrar()` roda em toda abertura e em toda restauração de backup; q
 
 - **Tipos de série:** `T` válida, `A` aquecimento, `P` preparatória. Só `T` conta em volume, recordes, índice, séries por grupo, histórico e sugestão. A/P são numeradas por letra; as válidas por 1, 2, 3 ignorando A/P.
 - **Sugestão por tipo:** cada linha sugere a partir da última série do **mesmo tipo** (aquecimento do aquecimento, válida da válida), via `recalcularSugestoes()`. Trocar tipo ou máquina recalcula.
-- **Memória de tipos** (`padraoTipos`): o treino lembra só quantos **A e P** fazer. A quantidade de **válidas vem do editor** — nunca aprender isso do que foi feito, senão o planejado encolhe.
+- **Memória de tipos** (`padraoTipos`): o treino lembra só quantos **A e P** fazer. A quantidade de **válidas vem do editor** — nunca aprender isso do que foi feito, senão o planejado encolhe. Só aprende **ao salvar** o treino (não num "Concluir" recusado) e **ignora exercício sem série marcada** (pulado ou não feito), senão um dia pulado apaga a memória.
 - **Botão − (menos uma série) é pedido explícito:** tirar uma série **válida** com o − no treino em andamento baixa também `items[].sets` do treino salvo (`baixarPlanoSeries`), com aviso "Próximos treinos: N séries válidas". Só baixa: o **+** vale só para o dia e nunca sobe o plano; tirar linha A/P não mexe; mínimo 1; treino livre e exercício que não está no treino não mudam nada. Não confundir com a regra acima: série **não marcada** continua sem encolher o plano — só o toque no − faz isso.
 - **Comparação e sugestão:** mesmo treino primeiro; com **máquina** preenchida, só a mesma máquina. Sem máquina, comportamento antigo.
-- **Máquina:** texto livre, lembrada por treino, comparação sem diferenciar maiúscula.
+- **Máquina:** texto livre, lembrada por treino, comparação sem diferenciar maiúscula. **Trocar exercício** (`trocarExercicio`) recalcula máquina e sugestões para o exercício novo. No Progresso, só aparecem como filtro máquinas com série válida.
+- **Descanso 0 = desligado**, e precisa sobreviver ao `migrar()` (não usar `||90` em número que pode ser 0).
+- **Repetir treino** do histórico usa descanso e reps do treino salvo quando o exercício está nele.
 - **Resumo do exercício** só oferece "Concluir treino" quando nada está pendente (exercício pulado não conta como pendente).
 - **Índice de força** = Epley (`carga × (1 + reps/30)`), apresentado como número sem unidade, nunca como "1RM".
 - **Medidas:** variação sem cor de bom/ruim (subir ou descer depende do objetivo); gordura varia em pontos percentuais ("p.p."). Um lado e dois lados são séries separadas.
@@ -47,13 +49,17 @@ A função `migrar()` roda em toda abertura e em toda restauração de backup; q
 
 Pasta `testes/`. Para rodar: `npm install jsdom` e depois `sh testes/rodar.sh`.
 
-- 16 arquivos `test_*.js` (223 verificações) + `fuzz.js` (cliques aleatórios checando erro e integridade dos dados) + `escala.js` (desempenho com ~1,5 ano de histórico) + `telas.py` (screenshots reais via Playwright/Chromium, se disponível).
+- 17 arquivos `test_*.js` (249 verificações) + `fuzz.js` (cliques aleatórios checando erro e integridade dos dados) + `escala.js` (desempenho com ~1,5 ano de histórico) + `telas.py` (screenshots reais via Playwright/Chromium, se disponível).
 - Todo teste falha se o app escrever erro no console.
 - Armadilhas conhecidas do harness: o app **recria o DOM** a cada `render()`, então nunca guarde referência de elemento entre ações; o `✓` **alterna**, então não marque de novo séries já feitas; `build()` zera o armazenamento, use `build(true)` para simular reabrir o app; o app grava com **350 ms de atraso**, então para ler `mem` force a gravação (`w.dispatchEvent(new w.Event("pagehide"))`) e, com vários cenários no mesmo arquivo, feche a janela (`w.close()`) ao fim de cada um — senão ela grava por cima do cenário seguinte.
 
 ## Lições de código
 
 - Um bloco de 46 linhas ficou duplicado numa edição antiga (funções declaradas duas vezes; a segunda vence em silêncio). Checar duplicatas depois de edições grandes.
+- `renderFloat()` apaga e redesenha todas as folhas abertas. Campos sem evento próprio (cardio, medidas, colar backup, nome do exercício) são guardados antes por `guardarRascunhos()`, e o cursor volta via `lembrarFoco()/restaurarFoco()`. O aviso (`toast`) mexe só nele mesmo (`desenharToast`). Campo novo numa folha sem evento `input` próprio precisa entrar em `guardarRascunhos()`.
+- `migrar()` também higieniza backup malformado (sessão sem `entries`, série sem `sets`, medida sem `valores`): registro sem estrutura mínima sai, lista faltando vira vazia.
+- CSS dos pontos do modo foco: os estados mudam `background-color`, nunca o atalho `background`, que reinicia o `background-clip` e pinta a faixa de toque inteira.
+- Contadores na interface usam `pl(n, "singular", "plural")`.
 - Existem **dois** lugares parecidos para cada exercício: o card da sessão (`cardExercicio`) e a folha do menu ⋯ (dentro de `renderFloat`). Campos do menu ⋯ vão na folha.
 - O ambiente de execução do Claude pode reiniciar e apagar arquivos de trabalho; o que importa fica no repositório.
 

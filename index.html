@@ -87,8 +87,8 @@
   .chk.on{background:var(--green);border-color:var(--green);color:var(--surface)}
   .ex.done .num, .setrow.ok .num{background:var(--ok-bg);border-color:var(--ok-line)}
   .ex.pulado{border-style:dashed;opacity:.72}
-  .dot.pulado{background:var(--muted);opacity:.55}
-  .dot.pulado.now{outline:2px solid var(--blue);outline-offset:-1px}
+  .dot.pulado{background-color:var(--muted);opacity:.55}
+  .dot.pulado.now{box-shadow:inset 0 0 0 1px var(--blue);opacity:.9}
   /* nav */
   nav{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--nav-bg);border-top:1px solid var(--line);
       display:flex;padding-bottom:env(safe-area-inset-bottom);max-width:672px;margin:0 auto}
@@ -130,11 +130,15 @@
   .stat b{display:block;font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
   .stat span{font-size:12px;color:var(--muted)}
   .dots{display:flex;gap:4px;margin:2px 0}
-  .dot{flex:1;height:5px;border-radius:3px;background:var(--track);cursor:pointer;padding:0;
-       border-top:9px solid transparent;border-bottom:9px solid transparent;background-clip:padding-box}
-  .dot.done{background:var(--green)}
-  .dot.now:not(.done){background:var(--blue)}
-  .dot.now{box-shadow:0 0 0 2px var(--blue)}
+  /* barra fina de 5px com área de toque de 23px: a cor fica só no miolo (padding-box);
+     por isso os estados mudam background-COLOR — o atalho "background" reiniciaria o clip
+     e pintaria a faixa de toque inteira */
+  .dot{flex:1;height:5px;border-radius:3px;background-color:var(--track);cursor:pointer;padding:0;
+       border:0;border-top:9px solid transparent;border-bottom:9px solid transparent;
+       background-clip:padding-box;box-sizing:content-box;-webkit-appearance:none;appearance:none}
+  .dot.done{background-color:var(--green)}
+  .dot.now:not(.done){background-color:var(--blue)}
+  .dot.now.done{box-shadow:inset 0 0 0 1px var(--blue)}
   .setrow.comhist{grid-template-columns:24px 1fr 1fr 62px 42px}
   .hist{font-size:11.5px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
   .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
@@ -670,7 +674,25 @@ async function load(){
 function migrar(){
   if(!Array.isArray(S.cardio)) S.cardio=[];
   if(!Array.isArray(S.medidas)) S.medidas=[];
-  if(Array.isArray(S.sessions)) S.sessions.sort((a,b)=>(a.end||a.start||0)-(b.end||b.start||0));
+  if(!Array.isArray(S.custom)) S.custom=[];
+  if(!Array.isArray(S.sessions)) S.sessions=[];
+  if(!Array.isArray(S.routines)) S.routines=[];
+  // um backup editado à mão ou corrompido não pode derrubar as telas:
+  // registro sem a estrutura mínima é descartado, lista faltando vira vazia
+  const obj = x => x && typeof x==="object";
+  S.sessions = S.sessions.filter(obj);
+  S.sessions.forEach(se => {
+    se.entries = (Array.isArray(se.entries) ? se.entries : []).filter(en => obj(en) && en.exId);
+    se.entries.forEach(en => { if(!Array.isArray(en.sets)) en.sets=[]; en.sets = en.sets.filter(obj); });
+    if(typeof se.name!=="string") se.name = "Treino";
+  });
+  S.medidas = S.medidas.filter(obj).filter(r => { if(!obj(r.valores)) r.valores={}; return typeof r.t==="number"; });
+  S.cardio = S.cardio.filter(c => obj(c) && typeof c.t==="number");
+  S.custom = S.custom.filter(c => obj(c) && c.id && typeof c.name==="string");
+  S.routines = S.routines.filter(obj);
+  if(S.active && (!obj(S.active) || !Array.isArray(S.active.entries))) S.active=null;
+  if(S.active) S.active.entries = S.active.entries.filter(en => obj(en) && en.exId && Array.isArray(en.sets));
+  S.sessions.sort((a,b)=>(a.end||a.start||0)-(b.end||b.start||0));
   const arrumaSets = en => {
     if(!en || !Array.isArray(en.sets)) return;
     if(en.rest===undefined) en.rest=90;
@@ -690,10 +712,15 @@ function migrar(){
       !(r.name==="Nova rotina" || r.name==="Novo treino"));   // limpa treinos vazios sem nome próprio
   S.routines.forEach(r => {
     if(!Array.isArray(r.items)) r.items=[];
+    r.items = r.items.filter(it => obj(it) && it.exId);
+    if(!r.id) r.id = uid();
+    if(typeof r.name!=="string") r.name = "Treino";
     r.items.forEach(it => {
       it.sets = Math.min(20, Math.max(1, parseInt(it.sets,10)||3));
       if(it.padraoTipos && typeof it.padraoTipos!=="object") delete it.padraoTipos;
-      it.rest = Math.min(600, Math.max(0, parseInt(it.rest,10)||90));
+      // descanso 0 é "desligado" e precisa sobreviver a reabrir o app (antes virava 90)
+      const rest = parseInt(it.rest,10);
+      it.rest = Math.min(600, Math.max(0, Number.isFinite(rest) ? rest : 90));
       if(typeof it.reps!=="string") it.reps = String(it.reps||"");
       it.reps = it.reps.slice(0,12);
     });
@@ -707,6 +734,8 @@ function migrar(){
 const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const num = v => { const n = parseFloat(String(v).replace(",",".")); return isFinite(n) ? n : 0; };
 const fmt = n => (Math.round(n*10)/10).toString().replace(".",",");
+// "1 exercício", "2 exercícios": contador com singular certo
+const pl = (n, sing, plur) => n+" "+(n===1?sing:plur);
 // padrão do app: repetições × carga  (ex.: 12×42,5)
 /* Tipo da série: T = válida (conta), A = aquecimento, P = preparatória/feeder.
    Só as válidas entram em volume, contagem de séries, recordes e sugestões. */
@@ -869,8 +898,9 @@ function fmtKm(n){
 
 function ritmo(c){
   if(!(c.km>0) || !(c.min>0)) return "";
-  const segPorKm = (c.min*60)/c.km;
-  return Math.floor(segPorKm/60)+":"+String(Math.round(segPorKm%60)).padStart(2,"0")+" /km";
+  // arredonda o total primeiro: 359,6 s/km vira 6:00, não "5:60"
+  const segPorKm = Math.round((c.min*60)/c.km);
+  return Math.floor(segPorKm/60)+":"+String(segPorKm%60).padStart(2,"0")+" /km";
 }
 function resumoCardio(c){
   const partes=[c.min+" min"];
@@ -912,17 +942,51 @@ function pedirConfirmacao(titulo, texto, rotulo, fn){
   renderFloat();
 }
 
+/* O aviso mexe só nele mesmo: redesenhar a camada inteira apagava o que a
+   pessoa estava digitando num formulário aberto quando o aviso sumia. */
+function desenharToast(){
+  const host=$("#float"); if(!host) return;
+  host.querySelectorAll(".toast").forEach(e=>e.remove());
+  if(toastMsg) host.insertAdjacentHTML("beforeend", `<div class="toast" role="status" aria-live="polite">${esc(toastMsg)}</div>`);
+}
 function toast(msg){
-  toastMsg=msg; renderFloat();
-  clearTimeout(toastT); toastT=setTimeout(()=>{toastMsg=null;renderFloat();},2600);
+  toastMsg=msg; desenharToast();
+  clearTimeout(toastT); toastT=setTimeout(()=>{toastMsg=null;desenharToast();},2600);
+}
+
+/* Antes de redesenhar as folhas abertas, guarda o que foi digitado e não tem
+   evento próprio (cardio, medidas, colar backup, nome do exercício). Sem isso,
+   o fim do descanso ou qualquer outro redesenho apagava os campos. */
+let exNomeRascunho = null;
+function guardarRascunhos(){
+  if(formCardio) lerFormCardio();
+  if(formMed) lerFormMedida();
+  if(sheetText && sheetText.mode!=="copy"){ const ta=$("#bkTa"); if(ta) sheetText.text=ta.value; }
+  if(exEdit){ const n=$("#exNome"); if(n) exNomeRascunho=n.value; }
+}
+function lembrarFoco(){
+  const el=document.activeElement, host=$("#float");
+  if(!el || !host || !host.contains(el) || !/^(INPUT|TEXTAREA)$/.test(el.tagName)) return null;
+  const sel = ["id","medv","note","maquina"].map(k => k==="id" ? (el.id?`#${el.id}`:"") : (el.dataset[k]!==undefined?`[data-${k}="${el.dataset[k]}"]`:"")).find(Boolean);
+  let pos=null; try{ pos=el.selectionStart; }catch(e){}
+  return sel ? {sel, pos} : null;
+}
+function restaurarFoco(f){
+  if(!f) return;
+  const el=$("#float").querySelector(f.sel); if(!el) return;
+  el.focus();
+  try{ if(f.pos!==null) el.setSelectionRange(f.pos, f.pos); }catch(e){}
 }
 
 /* ---------- descanso ---------- */
 function startRest(sec){ restTotal=sec; restEnd=Date.now()+sec*1000; renderFloat(); }
+let audioCtx = null;   // um só contexto de áudio, reaproveitado a cada bipe
 function beep(){
   try{
     const C = window.AudioContext||window.webkitAudioContext; if(!C) return;
-    const ctx=new C(), o=ctx.createOscillator(), g=ctx.createGain();
+    if(!audioCtx || audioCtx.state==="closed") audioCtx = new C();
+    if(audioCtx.state==="suspended" && audioCtx.resume) audioCtx.resume();
+    const ctx=audioCtx, o=ctx.createOscillator(), g=ctx.createGain();
     o.connect(g); g.connect(ctx.destination); o.frequency.value=880; o.type="sine";
     g.gain.setValueAtTime(.001,ctx.currentTime); g.gain.exponentialRampToValueAtTime(.25,ctx.currentTime+.02);
     g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.5);
@@ -1016,7 +1080,7 @@ function vTreinar(){
           <div class="grow" data-act="abrirRotina" data-id="${r.id}" role="button" tabindex="0"
             aria-expanded="${aberta?"true":"false"}" style="cursor:pointer">
             <h3 class="ellip">${esc(r.name)}${ehProximo?` <span class="tag prox">Próximo</span>`:""}</h3>
-            <p class="muted" style="font-size:13px">${r.items.length} exercícios${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"}&nbsp;${aberta?"▲":"▼"}</p>
+            <p class="muted" style="font-size:13px">${pl(r.items.length,"exercício","exercícios")}${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"}&nbsp;${aberta?"▲":"▼"}</p>
           </div>
           <button class="btn primary" data-act="start" data-id="${r.id}">Treinar</button>
         </div>
@@ -1074,7 +1138,7 @@ function vTreinar(){
         <div class="grow" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
           aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
           <h3 class="ellip">${esc(se.name)}</h3>
-          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${doneSets(se.entries)} séries&nbsp;${aberto?"▲":"▼"}</p></div>
+          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${pl(doneSets(se.entries),"série","séries")}&nbsp;${aberto?"▲":"▼"}</p></div>
         <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir</button></div>
         ${aberto ? `<div class="sep"></div>` + listaExercicios(se, false) : ""}</div>`;
     });
@@ -1134,7 +1198,7 @@ function cardExercicio(en, ei, foco, cabecalho){
       <input class="num" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="${st.sug?esc(st.sug.r):(ehValida?(en.reps?esc(en.reps):"0"):"—")}" aria-label="Repetições, ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}">
       <input class="num" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="${st.sug?esc(st.sug.w):(ehValida?"0":"—")}" aria-label="Carga em kg, ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}${st.sug?", sugestão "+esc(st.sug.w):""}">
       ${comHist?`<span class="hist">${p?par(p.w,p.r):"—"}</span>`:""}
-      <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Concluir ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome} de ${esc(ex.name)}">✓</button>
+      <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Marcar como feita: ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome} de ${esc(ex.name)}">✓</button>
     </div>${si===prIdx?`<div style="margin:-2px 0 4px 34px"><span class="tag pr">recorde pessoal</span></div>`:""}`;
   });
   return h;
@@ -1245,7 +1309,7 @@ function vSession(){
   if(modo()==="foco") return vSessionFoco();
   const a=S.active;
   let h = `<div class="between stack" style="margin-bottom:4px">
-      <span class="muted" style="font-size:13px">${a.entries.length} exercícios</span>
+      <span class="muted" style="font-size:13px">${pl(a.entries.length,"exercício","exercícios")}</span>
       <button class="btn sm" data-act="modoFoco">Modo foco</button></div>`;
 
   let primeiroAberto = true;
@@ -1380,7 +1444,7 @@ function dataCard(){
              : "Atenção: este navegador bloqueia o salvamento. Baixe um backup antes de fechar.";
   return `<div class="card stack">
     <h3>Seus dados</h3>
-    <p class="muted" style="font-size:13px;margin-top:4px">${onde} ${S.sessions.length} treinos feitos, ${S.routines.length} treinos salvos.</p>
+    <p class="muted" style="font-size:13px;margin-top:4px">${onde} ${pl(S.sessions.length,"treino feito","treinos feitos")}, ${pl(S.routines.length,"treino salvo","treinos salvos")}.</p>
     ${swEstado ? `<p class="muted" style="font-size:13px">Modo offline: ${swEstado==="ativo"
         ? "<span style=\"color:var(--green)\">ativo</span> — funciona sem internet."
         : swEstado==="instalando" ? "instalando, recarregue a página uma vez."
@@ -1428,7 +1492,7 @@ function cardSessao(se, aberto){
     <div class="between" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
       aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
       <div class="grow"><h3 class="ellip">${esc(se.name)}</h3>
-        <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${dur((se.end||se.start)-se.start)} · ${doneSets(se.entries)} séries</p></div>
+        <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${dur((se.end||se.start)-se.start)} · ${pl(doneSets(se.entries),"série","séries")}</p></div>
       <span class="muted">${aberto?"▲":"▼"}</span>
     </div>
     <div class="sep"></div>
@@ -1582,7 +1646,7 @@ function vCardio(){
       </div></div>`;
   });
   if(S.cardio.length>lista.length){
-    h += `<div class="stack"><button class="btn wide" data-act="maisCardio">Ver mais (${S.cardio.length-lista.length} restantes)</button></div>`;
+    h += `<div class="stack"><button class="btn wide" data-act="maisCardio">Ver mais (${pl(S.cardio.length-lista.length,"restante","restantes")})</button></div>`;
   }
   return h;
 }
@@ -1652,7 +1716,7 @@ function vConfig(){
   return temaCard() + resumoCard() + meusExerciciosCard() + dataCard() +
     `<div class="card stack"><h3>Sobre</h3>
       <p class="muted" style="font-size:13px;margin-top:4px">Seus treinos ficam apenas neste aparelho. Não há conta, servidor nem sincronização — por isso o backup é o que garante os dados a longo prazo.</p>
-      <p class="muted" style="font-size:13px;margin-top:8px">${S.sessions.length} treinos feitos, ${S.routines.length} treinos salvos, ${S.custom.length} exercícios criados por você.</p>
+      <p class="muted" style="font-size:13px;margin-top:8px">${pl(S.sessions.length,"treino feito","treinos feitos")}, ${pl(S.routines.length,"treino salvo","treinos salvos")}, ${pl(S.custom.length,"exercício criado","exercícios criados")} por você.</p>
     </div>`;
 }
 
@@ -1663,7 +1727,7 @@ function vHistorico(){
   let h="";
   lista.forEach(se => { h += cardSessao(se, openId===se.id); });
   if(total>lista.length){
-    h += `<div class="stack"><button class="btn wide" data-act="maisHist">Ver mais treinos (${total-lista.length} restantes)</button></div>`;
+    h += `<div class="stack"><button class="btn wide" data-act="maisHist">Ver mais treinos (${pl(total-lista.length,"restante","restantes")})</button></div>`;
   } else if(total>15){
     h += `<p class="muted stack" style="font-size:12.5px;text-align:center">${total} treinos registrados.</p>`;
   }
@@ -1679,10 +1743,10 @@ function vProgresso(){
   const ids=[...comDados].sort((a,b)=>exById(a).name.localeCompare(exById(b).name));
   if(!ids.length) return `<div class="empty">Sem dados ainda.<br>Registre alguns treinos para ver a evolução de carga.</div>`;
   if(!progressEx || !ids.includes(progressEx)) progressEx = ids[0];
-  const maquinas = maquinasDoExercicio(progressEx);
+  // só máquinas com série válida: uma máquina usada só no aquecimento não tem curva
+  const maquinas = maquinasDoExercicio(progressEx).filter(m => historyFor(progressEx, m).length);
   if(progressMaq && !maquinas.some(m=>m.toLowerCase()===progressMaq.toLowerCase())) progressMaq="";
   const hist = historyFor(progressEx, progressMaq||undefined);
-  if(!hist.length) progressMaq="";
   const comCarga = hist.some(p=>p.bw>0);
   const val = p => comCarga ? p.be : p.br;
   const bw = Math.max(...hist.map(p=>p.bw));
@@ -1726,7 +1790,7 @@ function vProgresso(){
       <span class="tnum muted" style="font-size:14px">melhor série ${parKg(p.bset.w,p.bset.r)}${p.vol>0?" · "+ton(p.vol):""}</span></div></div>`;
   });
   if(recentes.length > progLimite){
-    h += `<div class="stack"><button class="btn wide" data-act="maisProg">Ver mais sessões (${recentes.length-progLimite} restantes)</button></div>`;
+    h += `<div class="stack"><button class="btn wide" data-act="maisProg">Ver mais sessões (${pl(recentes.length-progLimite,"restante","restantes")})</button></div>`;
   }
   h += `<div class="stack"><p class="muted" style="font-size:12.5px">${comCarga?"Volume total acumulado neste exercício: "+ton(vol)+".":"Total de repetições acumuladas: "+repsTot+"."}</p></div>`;
   return h;
@@ -1809,6 +1873,8 @@ function renderPicker(){
 }
 
 function renderFloat(){
+  guardarRascunhos();
+  const foco = lembrarFoco();
   const host=$("#float"); host.innerHTML="";
   const barras = (S.active && !(naSessao && view==="treinar") ? 1 : 0) + (restEnd ? 1 : 0);
   document.body.classList.toggle("com-barra", barras===1);
@@ -1820,7 +1886,7 @@ function renderFloat(){
       <span class="pt" aria-hidden="true"></span>
       <div class="grow" style="min-width:0">
         <strong class="ellip" style="display:block;font-size:14px">${esc(S.active.name)}</strong>
-        <span style="font-size:12px;opacity:.8">em andamento · ${dur(Date.now()-S.active.start)} · ${n} série${n===1?"":"s"}</span>
+        <span class="ellip" style="display:block;font-size:12px;opacity:.8">em andamento · ${dur(Date.now()-S.active.start)} · ${pl(n,"série","séries")}</span>
       </div>
       <button data-act="retomar">Voltar ao treino</button></div>`);
   }
@@ -1844,8 +1910,11 @@ function renderFloat(){
     } else {
       const melhor = comCarga ? fmt(Math.max(...hist.map(p=>p.bw)))+" kg" : Math.max(...hist.map(p=>p.br))+" reps";
       const delta = hist.length>1 ? val(hist[hist.length-1]) - val(hist[0]) : 0;
+      // com carga, a curva é o índice de força (número sem unidade), não kg
+      const deltaTxt = comCarga ? (delta>=0?"+":"−")+Math.round(Math.abs(delta))+" no índice"
+                                : (delta>=0?"+":"−")+fmt(Math.abs(delta))+" reps";
       corpo = `<div class="between"><span class="muted" style="font-size:13px">Melhor: <strong>${melhor}</strong></span>
-          <span class="muted tnum" style="font-size:13px">${delta>=0?"+":""}${fmt(delta)} ${comCarga?"kg":"reps"} desde a 1ª sessão</span></div>
+          <span class="muted tnum" style="font-size:13px">${deltaTxt} desde a 1ª sessão</span></div>
         ${chart(hist, val)}
         <div style="margin-top:10px">${hist.slice().reverse().slice(0,6).map(pt=>`
           <div class="between" style="padding:6px 0;border-bottom:1px solid var(--line)">
@@ -1912,7 +1981,7 @@ function renderFloat(){
         <p class="muted" style="font-size:13px">${copiar
           ? "Selecione tudo e copie. Guardar esse texto num lugar seu (Notion, e-mail para si mesmo) é o que garante os dados a longo prazo."
           : "Cole aqui o texto do backup para restaurar. Os dados atuais serão substituídos."}</p>
-        <textarea id="bkTa" class="field" style="margin-top:10px;height:180px;font-size:12px;font-family:ui-monospace,monospace" ${copiar?"readonly":""} placeholder='{"app":"treino",...}'>${copiar?esc(sheetText.text):""}</textarea>
+        <textarea id="bkTa" class="field" style="margin-top:10px;height:180px;font-size:12px;font-family:ui-monospace,monospace" ${copiar?"readonly":""} placeholder='{"app":"treino",...}'>${esc(sheetText.text||"")}</textarea>
         ${copiar
           ? `<button class="btn wide primary stack" data-act="copiedOk">Já copiei, pode marcar como salvo</button>`
           : `<button class="btn wide primary stack" data-act="pasteApply">Restaurar estes dados</button>`}
@@ -1928,7 +1997,7 @@ function renderFloat(){
         <header><h2 class="ellip">Editar exercício</h2><button class="btn sm" data-act="fecharEx">Fechar</button></header>
         <div class="body">
           <label class="muted" style="font-size:12.5px">Nome</label>
-          <input class="field" style="margin-top:6px" id="exNome" value="${esc(ex.name)}">
+          <input class="field" style="margin-top:6px" id="exNome" value="${esc(exNomeRascunho!==null?exNomeRascunho:ex.name)}">
           <p style="margin-top:16px">Grupo</p>
           <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
             ${MUSCLES.map(m=>`<button class="chip ${ex.muscle===m?"on":""}" data-act="exGrupo" data-m="${m}">${m}</button>`).join("")}
@@ -2135,7 +2204,8 @@ function renderFloat(){
       </div></div>`);
     const b=host.querySelector('[data-act="dlgSim"]'); if(b) b.focus();
   }
-  if(toastMsg) host.insertAdjacentHTML("beforeend", `<div class="toast" role="status" aria-live="polite">${esc(toastMsg)}</div>`);
+  desenharToast();
+  if(!dialogo && !(sheetText && sheetText.mode==="copy")) restaurarFoco(foco);
 }
 
 /* O cabeçalho é fixo, então alinhar o topo do elemento com o topo da janela
@@ -2209,6 +2279,15 @@ function ultimaMaquina(exId, rotId){
   return "";
 }
 
+/* Trocar o exercício (ex.: máquina ocupada): a máquina e as sugestões eram do
+   exercício antigo e não valem para o novo. Séries já marcadas ficam como estão. */
+function trocarExercicio(i, novoId){
+  const en=S.active.entries[i]; if(!en) return;
+  en.exId=novoId;
+  en.maquina = S.active.routineId ? ultimaMaquina(novoId, S.active.routineId) : "";
+  recalcularSugestoes(en, S.active.routineId);
+}
+
 function newSession(routine){
   const entries = (routine ? routine.items : []).map(it => {
     const prev = lastSetsFor(it.exId, routine ? routine.id : undefined,
@@ -2250,6 +2329,8 @@ function aprenderTiposSeries(a){
   a.entries.forEach(en => {
     const it = r.items.find(x=>x.exId===en.exId);
     if(!it) return;
+    // exercício pulado ou não feito não ensina nada: senão um dia pulado apaga a memória
+    if(!en.sets.some(st=>st.done)) return;
     // só aquecimento e preparatória são aprendidos; a quantidade de válidas
     // pertence ao editor — senão um dia com série a menos vira o novo padrão
     const conta = {A:0, P:0};
@@ -2277,9 +2358,9 @@ function baixarPlanoSeries(en){
 
 function finish(){
   const a=S.active; if(!a) return;
-  aprenderTiposSeries(a);
   const algumaSerieFeita = a.entries.some(en => en.sets.some(s=>s.done));
   if(!algumaSerieFeita){ toast("Marque ao menos uma série antes de concluir."); return; }
+  aprenderTiposSeries(a);   // só depois de confirmar que o treino será salvo
   // aquecimento e preparatória são guardados (com o tipo marcado) só para sugerir
   // carga na próxima vez; todo cálculo do app filtra por valida() e os ignora
   const entries=a.entries.map(en=>({exId:en.exId, note:en.note||"", maquina:en.maquina||"",
@@ -2462,7 +2543,7 @@ document.addEventListener("click", ev => {
       rt.name = nomeAtual;
       rt.items = sp.lista.map(n => ({exId:slug(n), sets:3, reps:"8-12", rest:90}));
       save(); render(); toast("Modelo aplicado. Ajuste como quiser."); break; }
-    case "editEx": exEdit=id; renderFloat(); break;
+    case "editEx": exEdit=id; exNomeRascunho=null; renderFloat(); break;
     case "fecharEx": if(ev.target.closest("[data-stop]") && !t.classList.contains("btn")) break;
       exEdit=null; renderFloat(); break;
     case "exGrupo": { const ex=S.custom.find(x=>x.id===exEdit); if(!ex) break;
@@ -2531,7 +2612,7 @@ document.addEventListener("click", ev => {
       if(picker.mode==="routine" && !S.routines.find(x=>x.id===editingId)){
         picker=null; render(); toast("O treino que você editava não existe mais."); break;
       }
-      if(picker.mode==="swap"){ S.active.entries[picker.i].exId=id; }
+      if(picker.mode==="swap"){ trocarExercicio(picker.i, id); }
       else if(picker.mode==="routine"){ const r=S.routines.find(x=>x.id===editingId); r.items.push({exId:id,sets:3,reps:"8-12",rest:90}); }
       else { S.active.entries.push({exId:id, rest:90, reps:"", note:"", maquina:"", sets:novasSeries(id)}); focoIdx=S.active.entries.length-1; }
       picker=null; save(); render(); break;
@@ -2547,16 +2628,21 @@ document.addEventListener("click", ev => {
       }
       const ex={id:"c_"+slug(picker.novo)+"_"+uid(), name:picker.novo, muscle:t.dataset.m};
       S.custom.push(ex);
-      if(picker.mode==="swap"){ S.active.entries[picker.i].exId=ex.id; }
+      if(picker.mode==="swap"){ trocarExercicio(picker.i, ex.id); }
       else if(picker.mode==="routine"){ const r=S.routines.find(x=>x.id===editingId); r.items.push({exId:ex.id,sets:3,reps:"8-12",rest:90}); }
       else { S.active.entries.push({exId:ex.id, rest:90, reps:"", note:"", maquina:"", sets:novasSeries(ex.id)}); focoIdx=S.active.entries.length-1; }
       picker=null; save(); render(); toast("Exercício criado em "+t.dataset.m+"."); break; }
     case "start": { const r=S.routines.find(x=>x.id===id); if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break;} newSession(r); break; }
-    case "repeat": { const s=S.sessions.find(x=>x.id===id);
+    case "repeat": { const s=S.sessions.find(x=>x.id===id); if(!s) break;
       if(S.active){ toast("Conclua ou descarte o treino atual."); view="treinar"; render(); break; }
-      newSession({id:s.routineId,name:s.name,items:s.entries.map(en=>({exId:en.exId,
-        sets:Math.max(1,en.sets.filter(valida).length),reps:"",rest:90,
-        padraoTipos:{A:en.sets.filter(x=>tipoSerie(x)==="A").length, P:en.sets.filter(x=>tipoSerie(x)==="P").length}}))}); break; }
+      // descanso e faixa de reps vêm do treino salvo, quando o exercício está nele
+      const salvo = S.routines.find(x=>x.id===s.routineId);
+      newSession({id:s.routineId,name:s.name,items:s.entries.map(en=>{
+        const it = salvo ? salvo.items.find(x=>x.exId===en.exId) : null;
+        return {exId:en.exId,
+        sets:Math.max(1,en.sets.filter(valida).length),
+        reps: it ? it.reps : "", rest: it ? it.rest : 90,
+        padraoTipos:{A:en.sets.filter(x=>tipoSerie(x)==="A").length, P:en.sets.filter(x=>tipoSerie(x)==="P").length}}; })}); break; }
     case "pularEx": { const en=S.active.entries[i]; en.skipped=!en.skipped;
       let alvo=focoIdx;
       if(en.skipped && modo()==="foco" && i===focoIdx){ const p=proximoPendente(i); if(p!==null) alvo=p; }
@@ -2605,7 +2691,7 @@ document.addEventListener("click", ev => {
     case "cancelWorkout": {
       const feitas=doneSets(S.active.entries);
       pedirConfirmacao("Descartar o treino?",
-        feitas ? `As ${feitas} séries marcadas serão perdidas e nada vai para o histórico.`
+        feitas ? (feitas===1 ? "A série marcada será perdida e nada vai para o histórico." : `As ${feitas} séries marcadas serão perdidas e nada vai para o histórico.`)
                : "O treino em andamento será encerrado sem registrar nada.",
         "Descartar",
         () => { S.active=null; restEnd=0; naSessao=false; focoIdx=0; picker=null; exMenu=null; progSheet=null;
@@ -2690,7 +2776,7 @@ document.addEventListener("keydown", ev => {
     ev.preventDefault(); ev.target.dispatchEvent(new MouseEvent("click",{bubbles:true})); return;
   }
   if(ev.key==="Escape" && (picker||sheetText||exMenu!==null||progSheet||dialogo||exEdit||resumoEx!==null||formCardio||assistente||formMed||cfgMed)){ picker=null; sheetText=null; exMenu=null; progSheet=null; dialogo=null; exEdit=null; resumoEx=null; formCardio=null; assistente=null; formMed=null; cfgMed=false; renderFloat(); }
-  if(S.active && naSessao && modo()==="foco" && !picker && !exMenu && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
+  if(S.active && naSessao && modo()==="foco" && !picker && exMenu===null && !progSheet && document.activeElement && document.activeElement.tagName!=="INPUT"){
     if(ev.key==="ArrowLeft" && focoIdx>0){ focoIdx--; render(); }
     if(ev.key==="ArrowRight" && focoIdx<S.active.entries.length-1){ focoIdx++; render(); }
   }
