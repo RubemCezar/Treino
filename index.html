@@ -1198,7 +1198,7 @@ function cardExercicio(en, ei, foco, cabecalho){
       <input class="num" inputmode="numeric" data-k="${ei}-${si}-r" data-e="${ei}" data-s="${si}" data-f="r" value="${st.r!==""?esc(st.r):""}" placeholder="${st.sug?esc(st.sug.r):(ehValida?(en.reps?esc(en.reps):"0"):"—")}" aria-label="Repetições, ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}">
       <input class="num" inputmode="decimal" data-k="${ei}-${si}-w" data-e="${ei}" data-s="${si}" data-f="w" value="${st.w!==""?esc(st.w):""}" placeholder="${st.sug?esc(st.sug.w):(ehValida?"0":"—")}" aria-label="Carga em kg, ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome}${st.sug?", sugestão "+esc(st.sug.w):""}">
       ${comHist?`<span class="hist">${p?par(p.w,p.r):"—"}</span>`:""}
-      <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Concluir ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome} de ${esc(ex.name)}">✓</button>
+      <button class="chk ${st.done?"on":""}" data-act="check" data-i="${ei}" data-j="${si}" aria-pressed="${st.done?"true":"false"}" aria-label="Marcar como feita: ${ehValida?"série "+nValida:TIPOS_SERIE[tipoSerie(st)].nome} de ${esc(ex.name)}">✓</button>
     </div>${si===prIdx?`<div style="margin:-2px 0 4px 34px"><span class="tag pr">recorde pessoal</span></div>`:""}`;
   });
   return h;
@@ -1886,7 +1886,7 @@ function renderFloat(){
       <span class="pt" aria-hidden="true"></span>
       <div class="grow" style="min-width:0">
         <strong class="ellip" style="display:block;font-size:14px">${esc(S.active.name)}</strong>
-        <span style="font-size:12px;opacity:.8">em andamento · ${dur(Date.now()-S.active.start)} · ${n} série${n===1?"":"s"}</span>
+        <span class="ellip" style="display:block;font-size:12px;opacity:.8">em andamento · ${dur(Date.now()-S.active.start)} · ${pl(n,"série","séries")}</span>
       </div>
       <button data-act="retomar">Voltar ao treino</button></div>`);
   }
