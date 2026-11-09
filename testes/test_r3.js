@@ -21,7 +21,7 @@ const {build,esperar,clique,digitar,txt,lista,mem,t,fim} = require("./harness.js
 
   clique(w,'[data-act="voltarTreino"]'); await esperar(30);
   t(w.document.body.classList.contains("com-barra"),"com treino em andamento, a tela reserva espaço para a barra");
-  t(/&nbsp;[▲▼]|\u00a0[▲▼]/.test(w.document.querySelector('[data-act="abrirRotina"] p').innerHTML),"a seta fica presa à última palavra");
+  t(/(&nbsp;|\u00a0)<span class="chev/.test(w.document.querySelector('[data-act="abrirRotina"] p').innerHTML),"a seta fica presa à última palavra");
 
   clique(w,'[data-act="nav"][data-v="historico"]'); await esperar(30);
   const datas=[...w.document.querySelectorAll('[data-act="openSession"] p')].map(e=>e.textContent);

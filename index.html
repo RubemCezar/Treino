@@ -2,12 +2,13 @@
   *{box-sizing:border-box}
   :root{
     color-scheme: light;
-    --paper:#F4F6F7; --surface:#FFFFFF; --ink:#111418; --muted:#6C727C;
+    --paper:#F4F6F7; --surface:#FFFFFF; --ink:#111418; --muted:#5F6670; --amber-txt:#9A5B00;
     --line:#E1E5EA; --blue:#0F5FD1; --blue-soft:#E9F0FC;
     --red:#C22F35; --amber:#D9911C; --green:#1B7A4B;
     --hover:#F8F9FA; --track:#EEF1F4; --ok-bg:#F4FAF6; --ok-line:#D3EADD;
     --pr-bg:#FBECEC; --chip-bg:#F1F3F5; --nav-bg:rgba(255,255,255,.97);
     --blue-line:#C6D9F7; --bar-bg:#111418; --bar-fg:#FFFFFF;
+    --btn:#0F5FD1; --btn-hover:#0C4FB0; --nav-h:58px; --safe-b:env(safe-area-inset-bottom,0px);
     --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   }
   @media (prefers-color-scheme: dark){
@@ -15,24 +16,26 @@
     color-scheme: dark;
     --paper:#101318; --surface:#181C22; --ink:#E9ECF0; --muted:#98A1AC;
     --line:#2B313A; --blue:#7AAEFF; --blue-soft:#1C2A3D; --blue-line:#31486B;
-    --red:#F2777E; --amber:#E4A63C; --green:#4FC98D;
+    --red:#F2777E; --amber:#E4A63C; --amber-txt:#E4A63C; --green:#4FC98D;
     --hover:#20252D; --track:#252B34; --ok-bg:#16241D; --ok-line:#2A4437;
     --pr-bg:#33191C; --chip-bg:#232932; --nav-bg:rgba(24,28,34,.97);
     --bar-bg:#2A313B; --bar-fg:#F2F5F8;
+    --btn:#2F6FDB; --btn-hover:#285FC2;
     }
   }
   :root[data-tema="escuro"]{
     color-scheme: dark;
     --paper:#101318; --surface:#181C22; --ink:#E9ECF0; --muted:#98A1AC;
     --line:#2B313A; --blue:#7AAEFF; --blue-soft:#1C2A3D; --blue-line:#31486B;
-    --red:#F2777E; --amber:#E4A63C; --green:#4FC98D;
+    --red:#F2777E; --amber:#E4A63C; --amber-txt:#E4A63C; --green:#4FC98D;
     --hover:#20252D; --track:#252B34; --ok-bg:#16241D; --ok-line:#2A4437;
     --pr-bg:#33191C; --chip-bg:#232932; --nav-bg:rgba(24,28,34,.97);
     --bar-bg:#2A313B; --bar-fg:#F2F5F8;
+    --btn:#2F6FDB; --btn-hover:#285FC2;
   }
   html,body{margin:0;padding:0}
   body{background:var(--paper);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.45}
-  .wrap{max-width:640px;margin:0 auto;padding:0 16px 132px}
+  .wrap{max-width:640px;margin:0 auto;padding:0 16px calc(146px + var(--safe-b))}
   h1,h2,h3{margin:0;letter-spacing:-0.02em;font-weight:650}
   h1{font-size:26px}
   h2{font-size:19px}
@@ -53,8 +56,8 @@
   .btn{font:inherit;font-weight:550;border:1px solid var(--line);background:var(--surface);color:var(--ink);
        border-radius:10px;padding:10px 14px;cursor:pointer}
   .btn:hover{background:var(--hover)}
-  .btn.primary{background:var(--blue);border-color:var(--blue);color:#fff}
-  .btn.primary:hover{background:#0C4FB0}
+  .btn.primary{background:var(--btn);border-color:var(--btn);color:#fff}
+  .btn.primary:hover{background:var(--btn-hover);border-color:var(--btn-hover)}
   .btn.ghost{border-color:transparent;background:transparent;color:var(--blue);padding:8px 6px}
   .btn.danger{color:var(--red)}
   .btn.wide{width:100%;text-align:center}
@@ -93,11 +96,13 @@
   nav{position:fixed;left:0;right:0;bottom:0;z-index:8;background:var(--nav-bg);border-top:1px solid var(--line);
       display:flex;padding-bottom:env(safe-area-inset-bottom);max-width:672px;margin:0 auto}
   @media (min-width:673px){ nav{border-left:1px solid var(--line);border-right:1px solid var(--line);border-radius:12px 12px 0 0} }
-  nav button{flex:1;border:0;background:none;font:inherit;font-size:12.5px;color:var(--muted);padding:11px 4px 13px;
-             cursor:pointer;border-top:2px solid transparent;margin-top:-1px}
+  nav button{flex:1;border:0;background:none;font:inherit;font-size:11.5px;color:var(--muted);padding:7px 2px 8px;
+             cursor:pointer;border-top:2px solid transparent;margin-top:-1px;min-height:var(--nav-h);
+             display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;letter-spacing:.01em}
+  nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
   nav button.on{color:var(--blue);font-weight:600;border-top-color:var(--blue)}
   /* descanso */
-  .rest{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:9;width:calc(100% - 32px);max-width:608px;
+  .rest{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--nav-h) + var(--safe-b) + 8px);z-index:9;width:calc(100% - 32px);max-width:608px;
         background:var(--bar-bg);color:var(--bar-fg);border-radius:12px;padding:10px 12px;display:flex;align-items:center;gap:10px;
         box-shadow:0 6px 22px rgba(17,20,24,.22)}
   .rest .t{font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;min-width:64px}
@@ -114,14 +119,18 @@
   .sheet .body{overflow:auto;padding:12px 16px 20px}
   .pick{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line);cursor:pointer}
   .pick:hover{background:var(--hover)}
-  .emtreino{position:fixed;left:50%;transform:translateX(-50%);bottom:64px;z-index:9;width:calc(100% - 32px);max-width:608px;
+  .emtreino{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--nav-h) + var(--safe-b) + 8px);z-index:9;width:calc(100% - 32px);max-width:608px;
         background:var(--bar-bg);color:var(--bar-fg);border-radius:12px;padding:9px 12px;display:flex;align-items:center;gap:10px;
         box-shadow:0 6px 22px rgba(17,20,24,.22)}
   .emtreino button{font:inherit;font-size:13px;font-weight:550;border:1px solid rgba(255,255,255,.28);background:transparent;
         color:var(--bar-fg);border-radius:8px;padding:6px 10px;cursor:pointer;white-space:nowrap}
+  .emtreino.alto{bottom:calc(var(--nav-h) + var(--safe-b) + 62px)}
   .emtreino .pt{width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none}
-  .toast{position:fixed;bottom:132px;left:50%;transform:translateX(-50%);background:var(--bar-bg);color:var(--bar-fg);
+  .toast{position:fixed;bottom:calc(var(--nav-h) + var(--safe-b) + 76px);left:50%;transform:translateX(-50%);background:var(--bar-bg);color:var(--bar-fg);
          padding:10px 16px;border-radius:999px;font-size:14px;z-index:30;max-width:90%;text-align:center}
+  .chev{display:inline-block;width:7px;height:7px;border-right:1.7px solid currentColor;border-bottom:1.7px solid currentColor;
+        transform:translateY(-3px) rotate(45deg);margin-left:4px;opacity:.7}
+  .chev.up{transform:translateY(1px) rotate(-135deg)}
   .sep{height:1px;background:var(--line);margin:12px 0}
   .big{font-size:30px;font-weight:650;letter-spacing:-0.03em;font-variant-numeric:tabular-nums}
   .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
@@ -170,8 +179,8 @@
   .mes-chip.atual{border-color:var(--muted)}
   .mes-chip.on{background:var(--blue-soft);border-color:var(--blue);color:var(--blue)}
   .mes-chip.on b{color:var(--blue)}
-  body.com-barra .wrap{padding-bottom:210px}
-  body.com-duas-barras .wrap{padding-bottom:270px}
+  body.com-barra .wrap{padding-bottom:calc(224px + var(--safe-b))}
+  body.com-duas-barras .wrap{padding-bottom:calc(284px + var(--safe-b))}
   .empty{text-align:center;padding:28px 16px;color:var(--muted)}
   a{color:var(--blue)}
   :focus-visible{outline:2px solid var(--blue);outline-offset:2px}
@@ -736,11 +745,12 @@ const num = v => { const n = parseFloat(String(v).replace(",",".")); return isFi
 const fmt = n => (Math.round(n*10)/10).toString().replace(".",",");
 // "1 exercício", "2 exercícios": contador com singular certo
 const pl = (n, sing, plur) => n+" "+(n===1?sing:plur);
+const chev = aberto => `<span class="chev${aberto?" up":""}" aria-hidden="true"></span>`;
 // padrão do app: repetições × carga  (ex.: 12×42,5)
 /* Tipo da série: T = válida (conta), A = aquecimento, P = preparatória/feeder.
    Só as válidas entram em volume, contagem de séries, recordes e sugestões. */
 const TIPOS_SERIE = {T:{rot:"", cor:"", nome:"válida"},
-                     A:{rot:"A", cor:"var(--amber)", nome:"aquecimento"},
+                     A:{rot:"A", cor:"var(--amber-txt)", nome:"aquecimento"},
                      P:{rot:"P", cor:"var(--blue)", nome:"preparatória"}};
 const tipoSerie = st => st.tipo || (st.warm ? "A" : "T");
 const valida = st => tipoSerie(st)==="T";
@@ -1070,6 +1080,8 @@ function vTreinar(){
   } else {
     h += `<h2 class="stack">Meus treinos</h2>`;
     const proximo = proximoTreino();
+    // com treino em andamento, o botão cheio é o "Continuar" dele; os outros ficam discretos
+    const emAndamento = S.active ? (S.active.routineId || "") : null;
     S.routines.forEach((r,idx) => {
       const lastDone = S.sessions.filter(x=>x.routineId===r.id).slice(-1)[0];
       const aberta = rotinaAberta===r.id;
@@ -1080,9 +1092,11 @@ function vTreinar(){
           <div class="grow" data-act="abrirRotina" data-id="${r.id}" role="button" tabindex="0"
             aria-expanded="${aberta?"true":"false"}" style="cursor:pointer">
             <h3 class="ellip">${esc(r.name)}${ehProximo?` <span class="tag prox">Próximo</span>`:""}</h3>
-            <p class="muted" style="font-size:13px">${pl(r.items.length,"exercício","exercícios")}${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"}&nbsp;${aberta?"▲":"▼"}</p>
+            <p class="muted" style="font-size:13px">${pl(r.items.length,"exercício","exercícios")}${lastDone?" · último em "+dateLabel(lastDone.end||lastDone.start):" · nunca feito"}&nbsp;${chev(aberta)}</p>
           </div>
-          <button class="btn primary" data-act="start" data-id="${r.id}">Treinar</button>
+          ${emAndamento===r.id
+            ? `<button class="btn primary" data-act="retomar">Continuar</button>`
+            : `<button class="btn ${emAndamento===null&&(ehProximo||S.routines.length===1)?"primary":""}" data-act="start" data-id="${r.id}">Treinar</button>`}
         </div>
         ${aberta ? `<div class="sep"></div>` + (r.items.length
           ? r.items.map(it=>`<div class="between" style="padding:4px 0">
@@ -1138,7 +1152,7 @@ function vTreinar(){
         <div class="grow" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
           aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
           <h3 class="ellip">${esc(se.name)}</h3>
-          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${pl(doneSets(se.entries),"série","séries")}&nbsp;${aberto?"▲":"▼"}</p></div>
+          <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${pl(doneSets(se.entries),"série","séries")}&nbsp;${chev(aberto)}</p></div>
         <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir</button></div>
         ${aberto ? `<div class="sep"></div>` + listaExercicios(se, false) : ""}</div>`;
     });
@@ -1488,22 +1502,22 @@ function gruposDaSessao(se){
 }
 
 function cardSessao(se, aberto){
+  const grupos = gruposDaSessao(se).slice(0,6);
   return `<div class="card stack">
-    <div class="between" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
-      aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
-      <div class="grow"><h3 class="ellip">${esc(se.name)}</h3>
-        <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${dur((se.end||se.start)-se.start)} · ${pl(doneSets(se.entries),"série","séries")}</p></div>
-      <span class="muted">${aberto?"▲":"▼"}</span>
+    <div class="between">
+      <div class="grow" data-act="openSession" data-id="${se.id}" role="button" tabindex="0"
+        aria-expanded="${aberto?"true":"false"}" style="cursor:pointer">
+        <h3 class="ellip">${esc(se.name)}</h3>
+        <p class="muted" style="font-size:13px">${dateLabel(se.end||se.start)} · ${dur((se.end||se.start)-se.start)} · ${pl(doneSets(se.entries),"série","séries")}&nbsp;${chev(aberto)}</p>
+        ${grupos.length ? `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:8px">
+          ${grupos.map(([g,n])=>`<span class="tag mus">${esc(g)} ${n}</span>`).join("")}</div>` : ""}
+      </div>
+      <button class="btn sm" data-act="repeat" data-id="${se.id}" style="align-self:flex-start">Repetir</button>
     </div>
-    <div class="sep"></div>
-    <div class="row" style="flex-wrap:wrap;gap:6px;margin-bottom:6px">
-      ${gruposDaSessao(se).slice(0,6).map(([g,n])=>`<span class="tag mus">${esc(g)} ${n}</span>`).join("")}
-    </div>
-    ${listaExercicios(se, aberto)}
-    <div class="row" style="margin-top:8px">
-      <button class="btn sm" data-act="repeat" data-id="${se.id}">Repetir treino</button>
-      <button class="btn sm danger" data-act="delSession" data-id="${se.id}" style="margin-left:auto">Apagar</button>
-    </div>
+    ${aberto ? `<div class="sep"></div>${listaExercicios(se, true)}
+      <div class="row" style="margin-top:8px">
+        <button class="btn sm danger" data-act="delSession" data-id="${se.id}" style="margin-left:auto">Apagar treino</button>
+      </div>` : ""}
   </div>`;
 }
 
@@ -1882,7 +1896,7 @@ function renderFloat(){
   const emTreino = S.active && !(naSessao && view==="treinar");
   if(emTreino){
     const n=doneSets(S.active.entries);
-    host.insertAdjacentHTML("beforeend", `<div class="emtreino" ${restEnd?'style="bottom:118px"':""}>
+    host.insertAdjacentHTML("beforeend", `<div class="emtreino${restEnd?" alto":""}">
       <span class="pt" aria-hidden="true"></span>
       <div class="grow" style="min-width:0">
         <strong class="ellip" style="display:block;font-size:14px">${esc(S.active.name)}</strong>
@@ -1970,7 +1984,7 @@ function renderFloat(){
         <button class="btn wide" style="margin-top:8px" data-act="pularEx" data-i="${ei}">${en.skipped?"Cancelar pular":"Pular este exercício"}</button>
         ${!en.skipped?`<p class="muted" style="font-size:12.5px;margin-top:6px">Fica de fora do volume e da navegação de pendências. Marcar uma série cancela automaticamente.</p>`:""}
         <button class="btn wide danger" style="margin-top:8px" data-act="rmEx" data-i="${ei}">Remover do treino</button>
-        <p class="muted" style="font-size:12.5px;margin-top:14px">Dica: toque no número de uma série para mudar o tipo — válida, <strong style="color:var(--amber)">A</strong>quecimento ou <strong style="color:var(--blue)">P</strong>reparatória. Aquecimento e preparatória ficam fora do volume, da contagem e dos recordes.</p>
+        <p class="muted" style="font-size:12.5px;margin-top:14px">Dica: toque no número de uma série para mudar o tipo — válida, <strong style="color:var(--amber-txt)">A</strong>quecimento ou <strong style="color:var(--blue)">P</strong>reparatória. Aquecimento e preparatória ficam fora do volume, da contagem e dos recordes.</p>
       </div></div></div>`);
   }
   if(sheetText){
@@ -2233,10 +2247,17 @@ function renderOffline(){
 window.addEventListener("online", renderOffline);
 window.addEventListener("offline", renderOffline);
 
+const ICONES_NAV = {
+  treinar:  '<path d="M6.5 7v10M3.5 9.5v5M17.5 7v10M20.5 9.5v5M6.5 12h11"/>',
+  cardio:   '<path d="M3 12h4l2.2-4.5L13 17l2.3-5H21"/>',
+  historico:'<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  progresso:'<path d="M4 19.5h16"/><path d="M5 15.5l4.5-4.5 3.5 3L19 8"/><path d="M15 8h4v4"/>',
+  medidas:  '<rect x="3" y="8" width="18" height="8" rx="1.5"/><path d="M7 8v3M11 8v4.5M15 8v3M18.5 8v2"/>'
+};
 function renderNav(){
   const items=[["treinar","Treino"],["cardio","Cardio"],["historico","Histórico"],["progresso","Progresso"],["medidas","Medidas"]];
   $("#nav").innerHTML = items.map(([k,l]) =>
-    `<button class="${view===k||(view==="edit"&&k==="treinar")||((view==="config"||view==="calendario")&&k===voltarPara)?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}">${l}</button>`).join("");
+    `<button class="${view===k||(view==="edit"&&k==="treinar")||((view==="config"||view==="calendario")&&k===voltarPara)?"on":""}" ${view===k?'aria-current="page"':""} data-act="nav" data-v="${k}"><svg viewBox="0 0 24 24" aria-hidden="true">${ICONES_NAV[k]}</svg><span>${l}</span></button>`).join("");
 }
 
 function render(){
@@ -2344,18 +2365,37 @@ function aprenderTiposSeries(a){
    nunca vai abaixo de 1, e treino livre ou exercício avulso não mudam nada.
    Não confundir com aprenderTiposSeries: aquilo é inferido do que foi feito e,
    por isso, nunca mexe na quantidade de válidas. */
-function baixarPlanoSeries(en){
-  const a = S.active; if(!a || !a.routineId) return;
-  const r = S.routines.find(x=>x.id===a.routineId); if(!r) return;
-  const it = r.items.find(x=>x.exId===en.exId); if(!it) return;
-  const restam = Math.max(1, en.sets.filter(valida).length);
+// + e − nas séries válidas ajustam também o plano do treino salvo (+ sobe, − baixa), sempre entre 1 e 20.
+// Linhas criadas com + e depois trocadas para A/P (o caminho comum) devolvem o plano ao valor de antes:
+// `planoBase` guarda o plano de antes do primeiro +, só enquanto ele estiver "subido" por + neste treino.
+function itemDoPlano(en){
+  const a = S.active; if(!a || !a.routineId) return null;
+  const r = S.routines.find(x=>x.id===a.routineId); if(!r) return null;
+  return r.items.find(x=>x.exId===en.exId) || null;
+}
+function validasDe(en){ return Math.min(20, Math.max(1, en.sets.filter(valida).length)); }
+function avisoPlano(n){ toast("Próximos treinos: "+n+(n===1?" série válida":" séries válidas")); }
+function ajustarPlanoSeries(en, sentido){
+  const it = itemDoPlano(en); if(!it) return;
+  const validas = validasDe(en);
   const plano = Math.min(20, Math.max(1, parseInt(it.sets,10)||3));
-  if(restam < plano){
-    it.sets = restam;
-    toast("Próximos treinos: "+restam+(restam===1?" série válida":" séries válidas"));
+  if(sentido<0){
+    delete en.planoBase;                       // o − é decisão explícita: vale o que ficou
+    if(validas<plano){ it.sets = validas; avisoPlano(validas); }
+  } else if(validas>plano){
+    if(en.planoBase===undefined) en.planoBase = plano;
+    it.sets = validas; avisoPlano(validas);
   }
 }
+// depois de trocar o tipo de uma linha (válida ↔ A/P): só desfaz o que o + subiu
+function reajustarPlanoAposTipo(en){
+  if(en.planoBase===undefined) return;
+  const it = itemDoPlano(en); if(!it) return;
+  const novo = Math.max(en.planoBase, validasDe(en));
+  if(novo!==it.sets){ it.sets = novo; avisoPlano(novo); }
+}
 
+const FOLGA_FIM_MS = 30*60*1000;
 function finish(){
   const a=S.active; if(!a) return;
   const algumaSerieFeita = a.entries.some(en => en.sets.some(s=>s.done));
@@ -2377,7 +2417,12 @@ function finish(){
     if(bw>before.w+0.001) prs.push(exById(en.exId).name+" "+fmt(bw)+" kg");
     else if(be>before.e+0.001) prs.push(exById(en.exId).name+" (índice)");
   });
-  S.sessions.push({id:uid(), routineId:a.routineId, name:a.name, start:a.start, end:Date.now(), entries});
+  // treino esquecido aberto: se passou mais de 30 min da última série marcada, o fim é essa série
+  const agora = Date.now();
+  const ultima = Math.max(0, ...a.entries.flatMap(en=>en.sets.filter(s=>s.done && Number.isFinite(s.ts)).map(s=>s.ts)));
+  const esquecido = ultima > a.start && agora - ultima > FOLGA_FIM_MS;
+  S.sessions.push({id:uid(), routineId:a.routineId, name:a.name, start:a.start, end: esquecido ? ultima : agora, entries});
+  if(esquecido) toast("Duração ajustada: o treino terminou na última série marcada.");
   S.active=null; restEnd=0; exMenu=null; progSheet=null; picker=null; resumoEx=null; dobrado.clear(); ultimoMexido=null; naSessao=false; focoIdx=0; view="historico"; wake(false); save(); render();
   toast(prs.length ? "Treino salvo · "+prs.length+" recorde"+(prs.length>1?"s":"")+": "+prs.slice(0,2).join(", ") : "Treino salvo.");
 }
@@ -2654,6 +2699,7 @@ document.addEventListener("click", ev => {
       }
       if(!st.done && (num(st.w)===0 && num(st.r)===0)){ toast("Preencha carga e repetições."); break; }
       st.done=!st.done; ultimoMexido=i; dobrado.delete(i);
+      if(st.done) st.ts=Date.now(); else delete st.ts;   // hora da marcação: usada p/ o fim do treino esquecido aberto
       const en=S.active.entries[i];
       if(st.done) en.skipped=false;
       if(st.done && mostrarResumo() && en.sets.every(x=>x.done)) resumoEx=i;
@@ -2663,9 +2709,9 @@ document.addEventListener("click", ev => {
       if(en.sets.length>=20){ toast("Máximo de 20 séries por exercício."); break; }
       const l=en.sets[en.sets.length-1];
       const base = l ? (l.w!=="" || l.r!=="" ? {w:String(l.w),r:String(l.r)} : l.sug) : null;
-      en.sets.push({w:"",r:"",done:false,sug: base && (base.w||base.r) ? base : null}); save(); render(); break; }
+      en.sets.push({w:"",r:"",done:false,sug: base && (base.w||base.r) ? base : null}); ajustarPlanoSeries(en, 1); save(); render(); break; }
     case "delSet": { const en=S.active.entries[i];
-      if(en.sets.length>1){ const tirada=en.sets.pop(); if(valida(tirada)) baixarPlanoSeries(en); }
+      if(en.sets.length>1){ const tirada=en.sets.pop(); if(valida(tirada)) ajustarPlanoSeries(en, -1); }
       save(); render(); break; }
     case "rmEx": S.active.entries.splice(i,1); exMenu=null; dobrado.clear(); ultimoMexido=null; focoIdx=Math.min(focoIdx, Math.max(0,S.active.entries.length-1)); save(); render(); break;
     case "foco": { const d=+t.dataset.d;
@@ -2686,7 +2732,7 @@ document.addEventListener("click", ev => {
     case "setRest": S.active.entries[i].rest=+t.dataset.d; save(); render(); break;
     case "swapEx": exMenu=null; picker={mode:"swap", i:i, q:"", muscle:null}; renderFloat(); break;
     case "tipoSerie": { const st=S.active.entries[i].sets[j];
-      st.tipo=proxTipo(st); delete st.warm; recalcularSugestoes(S.active.entries[i]); save(); render(); break; }
+      st.tipo=proxTipo(st); delete st.warm; recalcularSugestoes(S.active.entries[i]); reajustarPlanoAposTipo(S.active.entries[i]); save(); render(); break; }
     case "finish": finish(); break;
     case "cancelWorkout": {
       const feitas=doneSets(S.active.entries);
