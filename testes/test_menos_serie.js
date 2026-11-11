@@ -25,6 +25,7 @@ const {build,esperar,clique,digitar,txt,lista,mem,t,fim} = require("./harness.js
     clique(w,'[data-act="fecharMenu"]'); await esperar(20); } };
   const tocar = async (w, acao, n) => { await abreMenu(w);
     for(let k=0;k<n;k++){ clique(w,`[data-act="${acao}"][data-i="0"]`); await esperar(20); } };
+  const tipo = async (w,j) => { await fechaMenu(w); clique(w,`[data-act="tipoSerie"][data-i="0"][data-j="${j}"]`); await esperar(20); };
   const menos = (w,n) => tocar(w,"delSet",n), mais = (w,n) => tocar(w,"addSet",n);
 
   // 1) o caso real: plano com 5 válidas (+2 A +2 P); tirar 2 e concluir
@@ -57,18 +58,21 @@ const {build,esperar,clique,digitar,txt,lista,mem,t,fim} = require("./harness.js
   t(linhas(w)===7, "próximo treino abre com 2 A + 2 P + 3 válidas (viu "+linhas(w)+")");
   await encerrar(w);
 
-  // 2) "+" nunca sobe o plano; "+" e depois "−" não encolhe; "−" abaixo do plano baixa
+  // 2) "+" também sobe o plano; "+" e depois "−" volta; "−" abaixo do plano baixa
   w = await abrir(dados(3,{A:0,P:0}));
   await iniciar(w);
   await mais(w,1);
   p = await plano(w);
-  t(linhas(w)===4 && p===3, "+ vale só para o dia, plano segue 3 (viu "+linhas(w)+"/"+p+")");
+  t(linhas(w)===4 && p===4, "+ sobe o plano para 4 (viu "+linhas(w)+"/"+p+")");
   await menos(w,1);
   p = await plano(w);
-  t(linhas(w)===3 && p===3, "+ e depois −: o plano não encolhe (viu "+linhas(w)+"/"+p+")");
+  t(linhas(w)===3 && p===3, "+ e depois −: o plano volta para 3 (viu "+linhas(w)+"/"+p+")");
   await menos(w,1);
   p = await plano(w);
   t(linhas(w)===2 && p===2, "− abaixo do plano baixa o plano (viu "+linhas(w)+"/"+p+")");
+  await mais(w,1); await mais(w,1);
+  p = await plano(w);
+  t(linhas(w)===4 && p===4, "dois + seguidos: plano 4 (viu "+linhas(w)+"/"+p+")");
   await encerrar(w);
 
   // 3) tirar uma linha P (a última) não mexe no plano; a válida seguinte sim
@@ -104,6 +108,49 @@ const {build,esperar,clique,digitar,txt,lista,mem,t,fim} = require("./harness.js
   await menos(w,1);
   p = await plano(w);
   t(linhas(w)===2 && p===3, "exercício que não está no treino não mexe no plano (viu "+linhas(w)+"/"+p+")");
+  await encerrar(w);
+
+  // 6) + em treino livre / exercício avulso não mexe em nada; + respeita o teto de 20
+  w = await abrir(dados(3,{A:0,P:0}, ativo([T(),T(),T()], EX, null)));
+  await retomar(w);
+  await mais(w,1);
+  p = await plano(w);
+  t(linhas(w)===4 && p===3, "+ em treino livre não mexe no treino salvo (viu "+linhas(w)+"/"+p+")");
+  await encerrar(w);
+  w = await abrir(dados(3,{A:0,P:0}, ativo([T(),T(),T()], "agachamento_livre")));
+  await retomar(w);
+  await mais(w,1);
+  p = await plano(w);
+  t(linhas(w)===4 && p===3, "+ em exercício que não está no treino não mexe no plano (viu "+linhas(w)+"/"+p+")");
+  await encerrar(w);
+  w = await abrir(dados(19,{A:0,P:0}));
+  await iniciar(w);
+  await mais(w,1); await mais(w,1);
+  p = await plano(w);
+  t(linhas(w)===20 && p===20, "teto de 20: plano para em 20 (viu "+linhas(w)+"/"+p+")");
+  await encerrar(w);
+
+  // 7) o caminho comum: + para criar linhas de aquecimento/preparatória e trocar o tipo — o plano volta
+  w = await abrir(dados(3,{A:0,P:0}));
+  await iniciar(w);
+  await mais(w,1); await mais(w,1);
+  p = await plano(w);
+  t(p===5, "dois + sobem o plano para 5 (viu "+p+")");
+  await tipo(w,0);   // linha 0 vira A
+  await tipo(w,1);   // linha 1 vira A
+  await tipo(w,1);   // e depois P
+  p = await plano(w);
+  t(linhas(w)===5 && p===3, "linhas viradas para A/P devolvem o plano a 3 (viu "+linhas(w)+"/"+p+")");
+  await tipo(w,1);   // P volta a ser válida
+  p = await plano(w);
+  t(p===4, "uma voltando a válida: plano 4 (viu "+p+")");
+  await encerrar(w);
+  // sem + nenhum, trocar o tipo de uma linha não mexe no plano
+  w = await abrir(dados(3,{A:0,P:0}));
+  await iniciar(w);
+  await tipo(w,0);
+  p = await plano(w);
+  t(p===3, "trocar tipo sem ter usado + não mexe no plano (viu "+p+")");
   await encerrar(w);
 
   t(erros.length===0, "nenhum erro no console ("+(erros[0]||"")+")");

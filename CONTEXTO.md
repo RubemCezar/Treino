@@ -35,7 +35,7 @@ A função `migrar()` roda em toda abertura e em toda restauração de backup; q
 - **Tipos de série:** `T` válida, `A` aquecimento, `P` preparatória. Só `T` conta em volume, recordes, índice, séries por grupo, histórico e sugestão. A/P são numeradas por letra; as válidas por 1, 2, 3 ignorando A/P.
 - **Sugestão por tipo:** cada linha sugere a partir da última série do **mesmo tipo** (aquecimento do aquecimento, válida da válida), via `recalcularSugestoes()`. Trocar tipo ou máquina recalcula.
 - **Memória de tipos** (`padraoTipos`): o treino lembra só quantos **A e P** fazer. A quantidade de **válidas vem do editor** — nunca aprender isso do que foi feito, senão o planejado encolhe. Só aprende **ao salvar** o treino (não num "Concluir" recusado) e **ignora exercício sem série marcada** (pulado ou não feito), senão um dia pulado apaga a memória.
-- **Botão − (menos uma série) é pedido explícito:** tirar uma série **válida** com o − no treino em andamento baixa também `items[].sets` do treino salvo (`baixarPlanoSeries`), com aviso "Próximos treinos: N séries válidas". Só baixa: o **+** vale só para o dia e nunca sobe o plano; tirar linha A/P não mexe; mínimo 1; treino livre e exercício que não está no treino não mudam nada. Não confundir com a regra acima: série **não marcada** continua sem encolher o plano — só o toque no − faz isso.
+- **Botões − e + são pedido explícito:** no treino em andamento, tirar uma série **válida** com o − baixa `items[].sets` do treino salvo e adicionar com o **+** sobe (`ajustarPlanoSeries`), com aviso "Próximos treinos: N séries válidas"; mínimo 1, máximo 20. Linha criada com + e depois trocada para A/P devolve o plano ao valor de antes (`planoBase`, `reajustarPlanoAposTipo`), porque é assim que se cria aquecimento. Tirar linha A/P não mexe; trocar tipo sem ter usado + não mexe; treino livre e exercício que não está no treino não mudam nada. Não confundir com a regra acima: série **não marcada** continua sem encolher o plano — só o toque no − faz isso.
 - **Comparação e sugestão:** mesmo treino primeiro; com **máquina** preenchida, só a mesma máquina. Sem máquina, comportamento antigo.
 - **Máquina:** texto livre, lembrada por treino, comparação sem diferenciar maiúscula. **Trocar exercício** (`trocarExercicio`) recalcula máquina e sugestões para o exercício novo. No Progresso, só aparecem como filtro máquinas com série válida.
 - **Descanso 0 = desligado**, e precisa sobreviver ao `migrar()` (não usar `||90` em número que pode ser 0).
@@ -43,13 +43,15 @@ A função `migrar()` roda em toda abertura e em toda restauração de backup; q
 - **Resumo do exercício** só oferece "Concluir treino" quando nada está pendente (exercício pulado não conta como pendente).
 - **Índice de força** = Epley (`carga × (1 + reps/30)`), apresentado como número sem unidade, nunca como "1RM".
 - **Medidas:** variação sem cor de bom/ruim (subir ou descer depende do objetivo); gordura varia em pontos percentuais ("p.p."). Um lado e dois lados são séries separadas.
+- **Visual (nov/2026, escolhido pelo Rubem):** manter o azul atual, só refinado. Barra de baixo com ícone + nome. No início, **só o treino "Próximo" tem botão cheio** (ou o único treino); com treino em andamento, o card dele mostra **Continuar** (cheio) e nenhum Treinar fica cheio. **Histórico recolhido:** fechado mostra data, duração, séries, grupos e **Repetir**; exercícios e **Apagar treino** só ao abrir. Direções descartadas: lima esportivo e laranja.
+- **Fim do treino esquecido aberto:** cada série marcada guarda `ts` (só no treino ativo, não vai para a sessão salva). Ao concluir, se passaram mais de 30 min da última série, `end` = hora dela (com aviso); senão `end` = agora. Treinos antigos já salvos não têm essa hora e não são corrigidos.
 - **Ênfase** (Equilibrado / Superior / Inferior) muda a **divisão da semana**, não só exercícios. É escolhida na hora de criar, não salva em Configurações.
 
 ## Testes
 
 Pasta `testes/`. Para rodar: `npm install jsdom` e depois `sh testes/rodar.sh`.
 
-- 17 arquivos `test_*.js` (249 verificações) + `fuzz.js` (cliques aleatórios checando erro e integridade dos dados) + `escala.js` (desempenho com ~1,5 ano de histórico) + `telas.py` (screenshots reais via Playwright/Chromium, se disponível).
+- 19 arquivos `test_*.js` (280 verificações) + `fuzz.js` (cliques aleatórios checando erro e integridade dos dados) + `escala.js` (desempenho com ~1,5 ano de histórico) + `telas.py` (screenshots reais via Playwright/Chromium, se disponível).
 - Todo teste falha se o app escrever erro no console.
 - Armadilhas conhecidas do harness: o app **recria o DOM** a cada `render()`, então nunca guarde referência de elemento entre ações; o `✓` **alterna**, então não marque de novo séries já feitas; `build()` zera o armazenamento, use `build(true)` para simular reabrir o app; o app grava com **350 ms de atraso**, então para ler `mem` force a gravação (`w.dispatchEvent(new w.Event("pagehide"))`) e, com vários cenários no mesmo arquivo, feche a janela (`w.close()`) ao fim de cada um — senão ela grava por cima do cenário seguinte.
 
@@ -59,7 +61,8 @@ Pasta `testes/`. Para rodar: `npm install jsdom` e depois `sh testes/rodar.sh`.
 - `renderFloat()` apaga e redesenha todas as folhas abertas. Campos sem evento próprio (cardio, medidas, colar backup, nome do exercício) são guardados antes por `guardarRascunhos()`, e o cursor volta via `lembrarFoco()/restaurarFoco()`. O aviso (`toast`) mexe só nele mesmo (`desenharToast`). Campo novo numa folha sem evento `input` próprio precisa entrar em `guardarRascunhos()`.
 - `migrar()` também higieniza backup malformado (sessão sem `entries`, série sem `sets`, medida sem `valores`): registro sem estrutura mínima sai, lista faltando vira vazia.
 - CSS dos pontos do modo foco: os estados mudam `background-color`, nunca o atalho `background`, que reinicia o `background-clip` e pinta a faixa de toque inteira.
-- Contadores na interface usam `pl(n, "singular", "plural")`.
+- Contadores na interface usam `pl(n, "singular", "plural")`. Seta de abrir/fechar é `chev(aberto)` (CSS), não ▲▼ — esses ficam só para variação de medida/carga.
+- Cores: botão cheio usa `--btn` (no escuro é um azul mais fechado que `--blue`, senão o texto branco fica ilegível). Texto amarelo (letra A) usa `--amber-txt`. Barras fixas (descanso, em andamento, aviso) ficam em `calc(var(--nav-h) + var(--safe-b) + …)`, nunca em px fixo — a área de gestos do Android empurra a navegação.
 - Existem **dois** lugares parecidos para cada exercício: o card da sessão (`cardExercicio`) e a folha do menu ⋯ (dentro de `renderFloat`). Campos do menu ⋯ vão na folha.
 - O ambiente de execução do Claude pode reiniciar e apagar arquivos de trabalho; o que importa fica no repositório.
 
